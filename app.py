@@ -25,8 +25,14 @@ if not st.session_state['logeado']:
             submit = st.form_submit_button("Ingresar 🚀")
             
             if submit:
-                # Aquí creamos tu usuario principal (después podemos agregar a los alumnos)
-                if usuario == "Sebastian" and password == "Traders2026!":
+                # 📝 DICCIONARIO DE ALUMNOS (Usuario : Contraseña)
+                usuarios_autorizados = {
+                    "Sebastian": "Traders2026!",
+                    "JuanPerez": "Swing2026*",
+                    "MariaTrader": "Breakout123"
+                }
+                
+                if usuario in usuarios_autorizados and usuarios_autorizados[usuario] == password:
                     st.session_state['logeado'] = True
                     st.session_state['usuario_actual'] = usuario
                     st.rerun()
