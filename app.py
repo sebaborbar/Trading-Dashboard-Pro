@@ -453,7 +453,7 @@ with tab_dash:
     st.write("---")
     st.markdown("### ⚙️ Administración de Datos")
     with st.expander("🗑️ Eliminar un registro de la base de datos"):
-        st.warning("⚠️ Cuidado: Al eliminar un registro, se borrará definitivamente de Google Sheets.")
+        st.warning("⚠️ Cuidado: Al eliminar un registro, se borrará definitivamente de la base de datos.")
         
         # Leemos la hoja completa
         df_eliminar = pd.DataFrame(sheet.get_all_records())
