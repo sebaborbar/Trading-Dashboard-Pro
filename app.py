@@ -62,17 +62,20 @@ def formato_es(num):
 def formato_entero(num):
     return f"{num:,}".replace(",", ".")
 
-# --- 2. CONEXIÓN A GOOGLE SHEETS ---
+# ---  2. CONEXIÓN A GOOGLE SHEETS ---
 try:
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-    creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
+    
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    
     client = gspread.authorize(creds)
     sheet = client.open("DB_Trading_App").worksheet("journal")
     conexion_exitosa = True
-    
+
     # FIX CÓNDOR CHILENO: Limpiamos los datos globalmente
     filas = sheet.get_all_values()
     if len(filas) > 1:
