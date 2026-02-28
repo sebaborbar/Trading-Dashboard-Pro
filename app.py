@@ -462,8 +462,12 @@ with tab_dash:
             # La fila 1 son los títulos, la data empieza en la 2
             df_eliminar['Fila_Excel'] = df_eliminar.index + 2
             
-            # NOMBRES CORREGIDOS (Fecha, Ticker, Acciones)
-            df_eliminar['Etiqueta'] = df_eliminar['Fecha'].astype(str) + " | " + df_eliminar['Ticker'].astype(str) + " | Acciones: " + df_eliminar['Acciones'].astype(str)
+            # SOLUCIÓN BLINDADA: Tomamos las columnas por su orden (0, 1 y 2) ignorando sus nombres
+            col_1 = df_eliminar.columns[0] # Usualmente Fecha
+            col_2 = df_eliminar.columns[1] # Usualmente Ticker
+            col_3 = df_eliminar.columns[2] # Usualmente Acciones
+            
+            df_eliminar['Etiqueta'] = df_eliminar[col_1].astype(str) + " | " + df_eliminar[col_2].astype(str) + " | Acciones: " + df_eliminar[col_3].astype(str)
             
             opciones_borrar = dict(zip(df_eliminar['Etiqueta'], df_eliminar['Fila_Excel']))
             
