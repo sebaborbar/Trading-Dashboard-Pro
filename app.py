@@ -69,13 +69,17 @@ try:
         "https://www.googleapis.com/auth/drive"
     ]
     
-    import json
-    creds_dict = json.loads(st.secrets["google_json"])
+    import os
     
-    # EL MARTILLAZO FINAL: Forzamos el salto de línea real sí o sí
-    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    # EL TRUCO DEL FANTASMA: Recreamos el archivo original por 1 segundo
+    with open("temp_credenciales.json", "w") as f:
+        f.write(st.secrets["google_json"])
+        
+    # Usamos LA MISMA función original que te funcionó el primer día
+    creds = Credentials.from_service_account_file("temp_credenciales.json", scopes=scopes)
     
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    # Destruimos la evidencia inmediatamente
+    os.remove("temp_credenciales.json")
     
     client = gspread.authorize(creds)
     sheet = client.open("DB_Trading_App").worksheet("journal")
