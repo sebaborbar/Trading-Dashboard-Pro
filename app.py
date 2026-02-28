@@ -71,6 +71,10 @@ try:
     
     import json
     creds_dict = json.loads(st.secrets["google_json"])
+    
+    # EL MARTILLAZO FINAL: Forzamos el salto de línea real sí o sí
+    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     
     client = gspread.authorize(creds)
