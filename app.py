@@ -321,6 +321,37 @@ with tab_bitacora:
                 else:
                     st.success("Tus manos están libres. No tienes operaciones abiertas actualmente. ¡Busca el próximo setup! 🦅")
 
+# --- 🗑️ SECCIÓN: ELIMINAR OPERACIÓN ---
+        st.write("---")
+        st.markdown("### ⚙️ Administración de Datos")
+        with st.expander("🗑️ Eliminar un registro (Corregir error)"):
+            st.warning("⚠️ Cuidado: Al eliminar un registro, se borrará definitivamente de la base de datos (Google Sheets).")
+            
+            # Leemos la hoja completa
+            df_eliminar = pd.DataFrame(sheet.get_all_records())
+            
+            if not df_eliminar.empty:
+                # La fila 1 son los títulos, la data empieza en la 2
+                df_eliminar['Fila_Excel'] = df_eliminar.index + 2
+                
+                # Creamos la etiqueta que verá el usuario
+                df_eliminar['Etiqueta'] = df_eliminar['Fecha de Compra'].astype(str) + " | " + df_eliminar['Ticker'].astype(str) + " | Acciones: " + df_eliminar['Cantidad de Acciones'].astype(str)
+                
+                opciones_borrar = dict(zip(df_eliminar['Etiqueta'], df_eliminar['Fila_Excel']))
+                
+                trade_a_borrar = st.selectbox("Selecciona la operación que deseas eliminar:", options=[""] + list(opciones_borrar.keys()))
+                
+                if st.button("🗑️ Eliminar Definitivamente"):
+                    if trade_a_borrar != "":
+                        fila_exacta = opciones_borrar[trade_a_borrar]
+                        sheet.delete_rows(int(fila_exacta))
+                        st.success(f"✅ Registro eliminado con éxito.")
+                        st.rerun()
+                    else:
+                        st.error("⚠️ Por favor, selecciona una operación de la lista.")
+            else:
+                st.info("No hay operaciones registradas para eliminar.")
+
 # ==========================================
 # PESTAÑA 3: MÉTRICAS (Dashboard Avanzado)
 # ==========================================
