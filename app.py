@@ -28,7 +28,7 @@ if not st.session_state['logeado']:
                 # 📝 DICCIONARIO DE ALUMNOS (Usuario : Contraseña)
                 usuarios_autorizados = {
                     "Sebastian": "Traders2026!",
-                    "JuanPerez": "Swing2026*",
+                    "Juan Perez": "Swing2026*",
                     "MariaTrader": "Breakout123"
                 }
                 
