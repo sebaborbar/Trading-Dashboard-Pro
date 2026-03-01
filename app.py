@@ -176,7 +176,7 @@ with tab_bitacora:
 
     if modo_bitacora == "⏪ Registro Histórico":
         # --- MODO 1: REGISTRO HISTÓRICO ---
-        st.subheader("📝 Registro Histórico (Scaling Out Pasado)")
+        st.subheader("📝 Registro Histórico")
         st.markdown("Ideal para subir trades antiguos o migrar historiales.")
         
         with st.form("form_trade_avanzado", clear_on_submit=True):
