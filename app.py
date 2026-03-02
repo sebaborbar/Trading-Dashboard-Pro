@@ -105,6 +105,10 @@ except Exception as e:
     df = pd.DataFrame()
     st.sidebar.error(f"Error de base de datos: {e}")
 
+# 🔒 GUARDIÁN DE PRIVACIDAD: Filtramos el Excel para mostrar SOLO los datos del usuario activo
+if 'Usuario' in df.columns:
+    df = df[df['Usuario'] == usuario_actual]
+
 # --- 3. MENÚ DE NAVEGACIÓN ---
 tab_calc, tab_bitacora, tab_dash = st.tabs(["🧮 Calculadora de Riesgo", "📝 Bitácora", "📊 Métricas de Rendimiento"])
 
