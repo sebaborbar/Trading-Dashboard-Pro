@@ -351,7 +351,23 @@ with tab_bitacora:
                             btn_cerrar = st.form_submit_button("💰 Registrar Salida")
                             
                             if btn_cerrar:
-                                max_acc = portafolio[t_venta
+                                max_acc = portafolio[t_venta]['Acciones']
+                                if a_venta > 0 and p_venta > 0 and a_venta <= max_acc:
+                                    p_promedio = portafolio[t_venta]['Precio Promedio']
+                                    monto_venta = a_venta * p_promedio
+                                    pl_usd = (p_venta - p_promedio) * a_venta
+                                    pl_pct = ((p_venta - p_promedio) / p_promedio) * 100
+                                    
+                                    fila_salida = [str(f_venta), t_venta, a_venta, p_promedio, monto_venta, p_venta, round(pl_pct, 2), round(pl_usd, 2), n_venta, usuario_actual]
+                                    try:
+                                        sheet.append_row(fila_salida)
+                                        st.success(f"¡Salida de {t_venta} registrada! Ganancia/Pérdida: ${round(pl_usd,2)}. Presiona **F5**.")
+                                    except Exception as e:
+                                        st.error(f"Error al guardar: {e}")
+                                else:
+                                    st.warning(f"⚠️ Revisa los datos. No puedes vender más de {max_acc} acciones.")
+                    else:
+                        st.success("Tus manos están libres. No tienes operaciones abiertas actualmente. ¡Busca el próximo setup! 🎯")
 
 # ==========================================
 # PESTAÑA 3: MÉTRICAS (Dashboard Avanzado)
