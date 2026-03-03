@@ -218,38 +218,38 @@ with tab_bitacora:
         
         with st.form("form_trade_avanzado", clear_on_submit=True):
             st.markdown("#### 1. Datos de Entrada")
-            col1, col2, col3, col4 = st.columns(4)
-            with col1: fecha_entrada = st.date_input("Fecha de Compra")
-            with col2: ticker_form = st.text_input("Ticker (Ej: NVDA)").upper()
-            with col3: acciones_totales = st.number_input("Total Acciones", step=1)
-            with col4: precio_entrada_form = st.number_input("Precio Compra ($)", min_value=0.00, step=0.50)
-                
-            notas_entrada = st.text_input("Notas de Entrada")
-            st.markdown("---")
-            
-            st.markdown("#### 2. Salidas Parciales")
-            s1_c1, s1_c2, s1_c3, s1_c4 = st.columns(4)
-            with s1_c1: fecha_s1 = st.date_input("Fecha Salida 1", key="f1")
-            with s1_c2: acc_s1 = st.number_input("Acciones Vendidas", min_value=0, step=1, key="a1")
-            with s1_c3: precio_s1 = st.number_input("Precio Venta ($)", min_value=0.0, step=0.5, key="p1")
-            with s1_c4: notas_s1 = st.text_input("Notas Salida 1", key="n1")
-            
-            s2_c1, s2_c2, s2_c3, s2_c4 = st.columns(4)
-            with s2_c1: fecha_s2 = st.date_input("Fecha Salida 2", key="f2")
-            with s2_c2: acc_s2 = st.number_input("Acciones Vendidas", min_value=0, step=1, key="a2")
-            with s2_c3: precio_s2 = st.number_input("Precio Venta ($)", min_value=0.0, step=0.5, key="p2")
-            with s2_c4: notas_s2 = st.text_input("Notas Salida 2", key="n2")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1: fecha_entrada = st.date_input("Fecha de Entrada")
+        with col2: ticker_form = st.text_input("Ticker (Ej: NVDA)").upper()
+        with col3: acciones_totales = st.number_input("Total Acciones", step=1)
+        with col4: precio_entrada_form = st.number_input("Precio Entrada ($)", step=0.50)
 
-            s3_c1, s3_c2, s3_c3, s3_c4 = st.columns(4)
-            with s3_c1: fecha_s3 = st.date_input("Fecha Salida 3", key="f3")
-            with s3_c2: acc_s3 = st.number_input("Acciones Vendidas", min_value=0, step=1, key="a3")
-            with s3_c3: precio_s3 = st.number_input("Precio Venta ($)", min_value=0.0, step=0.5, key="p3")
-            with s3_c4: notas_s3 = st.text_input("Notas Salida 3", key="n3")
+        notas_entrada = st.text_input("Notas de Entrada")
+        st.markdown("---")
+
+        st.markdown("#### 2. Salidas Parciales")
+        s1_c1, s1_c2, s1_c3, s1_c4 = st.columns(4)
+        with s1_c1: fecha_s1 = st.date_input("Fecha Salida 1", key="f1")
+        with s1_c2: acc_s1 = st.number_input("Cantidad de Acciones", step=1, key="a1")
+        with s1_c3: precio_s1 = st.number_input("Precio Salida ($)", step=0.5, key="p1")
+        with s1_c4: notas_s1 = st.text_input("Notas Salida 1", key="n1")
+
+        s2_c1, s2_c2, s2_c3, s2_c4 = st.columns(4)
+        with s2_c1: fecha_s2 = st.date_input("Fecha Salida 2", key="f2")
+        with s2_c2: acc_s2 = st.number_input("Cantidad de Acciones", step=1, key="a2")
+        with s2_c3: precio_s2 = st.number_input("Precio Salida ($)", step=0.5, key="p2")
+        with s2_c4: notas_s2 = st.text_input("Notas Salida 2", key="n2")
+
+        s3_c1, s3_c2, s3_c3, s3_c4 = st.columns(4)
+        with s3_c1: fecha_s3 = st.date_input("Fecha Salida 3", key="f3")
+        with s3_c2: acc_s3 = st.number_input("Cantidad de Acciones", step=1, key="a3")
+        with s3_c3: precio_s3 = st.number_input("Precio Salida ($)", step=0.5, key="p3")
+        with s3_c4: notas_s3 = st.text_input("Notas Salida 3", key="n3")
+
+        st.write("---")
+        submit_button = st.form_submit_button("💾 Guardar Historial en Base de Datos")
             
-            st.write("---")
-            submit_button = st.form_submit_button("💾 Guardar Historial en Base de Datos")
-            
-            if submit_button:
+        if submit_button:
                 if ticker_form == "" or precio_entrada_form <= 0 or acciones_totales == 0:
                     st.warning("⚠️ Ingresa un Ticker, acciones (no puede ser cero) y precio válidos.")
                 elif abs(acc_s1 + acc_s2 + acc_s3) > abs(acciones_totales):
@@ -260,12 +260,19 @@ with tab_bitacora:
                     filas_a_guardar.append([str(fecha_entrada), ticker_form, acciones_totales, precio_entrada_form, monto_entrada, 0.0, 0.0, 0.0, notas_entrada, usuario_actual])
 
                     def procesar_salida(f_fecha, f_acc, f_precio, f_notas):
-                        if abs(f_acc) > 0 and f_precio > 0:
-                            monto_salida = f_acc * precio_entrada_form
-                            pl_usd = (f_precio - precio_entrada_form) * f_acc
+                     if abs(f_acc) > 0 and f_precio > 0:
+                        monto_salida = f_acc * precio_entrada_form
+                        
+                        # MOTOR INTELIGENTE: Detectar si el trade fue Long o Short
+                        if acciones_totales > 0: # Es un LONG
+                            pl_usd = (f_precio - precio_entrada_form) * abs(f_acc)
                             pl_pct = ((f_precio - precio_entrada_form) / precio_entrada_form) * 100
-                            return [str(f_fecha), ticker_form, f_acc, precio_entrada_form, monto_salida, f_precio, round(pl_pct, 2), round(pl_usd, 2), f_notas, usuario_actual]
-                        return None
+                        else: # Es un SHORT
+                            pl_usd = (precio_entrada_form - f_precio) * abs(f_acc)
+                            pl_pct = ((precio_entrada_form - f_precio) / precio_entrada_form) * 100
+                            
+                        return [str(f_fecha), ticker_form, f_acc, precio_entrada_form, monto_salida, f_precio, round(pl_pct, 2), round(pl_usd, 2), f_notas, usuario_actual]
+                     return None
                     
                     s1 = procesar_salida(fecha_s1, acc_s1, precio_s1, notas_s1)
                     if s1: filas_a_guardar.append(s1)
