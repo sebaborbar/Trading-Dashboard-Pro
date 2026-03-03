@@ -116,55 +116,83 @@ tab_calc, tab_bitacora, tab_dash = st.tabs(["🧮 Calculadora de Riesgo", "📝 
 # PESTAÑA 1: CALCULADORA DE RIESGO
 # ==========================================
 with tab_calc:
-    st.subheader("Configuración de Trade (LONG)")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**1. Datos del Capital**")
-        capital = st.number_input("Capital Total ($)", min_value=0.0, value=30000.0, step=1000.0)
-        riesgo_pct = st.number_input("Riesgo (%)", min_value=0.1, value=0.50, step=0.1)
-        riesgo_usd = capital * (riesgo_pct / 100)
-        st.info(f"**Riesgo en dinero:** ${formato_es(riesgo_usd)}")
-        
-    with col2:
-        st.markdown("**2. Datos del Gráfico**")
-        ticker = st.text_input("TICKER", value="AAAA").upper()
-        breakout = st.number_input("Precio Breakout ($)", min_value=0.0, value=50.0, step=0.5)
-        atr = st.number_input("ATR ($)", min_value=0.0, value=4.89, step=0.1)
-        minimo = st.number_input("Precio Último Mínimo ($)", min_value=0.0, value=46.0, step=0.5)
+            st.subheader("⚙️ Configuración del Trade")
+            
+            # 1. EL SWITCH INSTITUCIONAL
+            direccion = st.radio("Dirección del Trade:", ["ALZA 🟢 (Long)", "BAJA 🔴 (Short)"], horizontal=True)
 
-    st.write("---")
-    
-    entrada = breakout * 1.001
-    sl_minimo = minimo * 0.995
-    sl_atr = breakout - atr
-    sl_definitivo = min(sl_minimo, sl_atr)
-    
-    if entrada > sl_definitivo and sl_definitivo > 0:
-        riesgo_por_accion = entrada - sl_definitivo
-        acciones_a_comprar = math.floor(riesgo_usd / riesgo_por_accion)
-        monto_exposicion = acciones_a_comprar * entrada
-        take_profit = entrada + (riesgo_por_accion * 2)
-        acciones_vender_tp = math.ceil(acciones_a_comprar / 2)
-        
-        acc_str = formato_entero(acciones_a_comprar)
-        acc_tp_str = formato_entero(acciones_vender_tp)
-        
-        st.subheader("Plan de Acción")
-        res_col1, res_col2, res_col3, res_col4 = st.columns(4)
-        res_col1.metric("Precio de Entrada", f"${formato_es(entrada)}")
-        res_col2.metric("Acciones a Comprar", acc_str)
-        res_col3.metric("Stop Loss Definitivo", f"${formato_es(sl_definitivo)}")
-        res_col4.metric("Take Profit (2:1)", f"${formato_es(take_profit)}")
-        
-        st.warning(
-            f"**💡 Resumen de la Operación:**\n\n"
-            f"Compra **{acc_str}** acciones de **{ticker}** a **${formato_es(entrada)}**.\n\n"
-            f"Tu exposición total será de **${formato_es(monto_exposicion)}**.\n\n"
-            f"Al llegar al Take Profit, vende **{acc_tp_str}** acciones para asegurar ganancias."
-        )
-    else:
-        st.error("⚠️ Revisa los precios. El Stop Loss debe ser menor al precio de entrada.")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**1. Datos del Capital**")
+                capital = st.number_input("Capital Total ($)", min_value=0.0, value=30000.0, step=1000.0)
+                riesgo_pct = st.number_input("Riesgo (%)", min_value=0.1, value=0.50, step=0.1)
+                riesgo_usd = capital * (riesgo_pct / 100)
+                st.info(f"**Riesgo en dinero:** ${formato_es(riesgo_usd)}")
+
+            with col2:
+                st.markdown("**2. Datos del Gráfico**")
+                ticker = st.text_input("TICKER", value="AAAA").upper()
+                breakout = st.number_input("Precio Breakout/Breakdown ($)", min_value=0.0, value=50.0, step=0.5)
+                atr = st.number_input("ATR ($)", min_value=0.0, value=4.89, step=0.1)
+                
+                # Texto dinámico según la dirección
+                if "ALZA" in direccion:
+                    extremo = st.number_input("Precio Último Mínimo ($)", min_value=0.0, value=46.0, step=0.5)
+                else:
+                    extremo = st.number_input("Precio Último Máximo ($)", min_value=0.0, value=54.0, step=0.5)
+
+            st.write("---")
+            
+            # 2. LA MAGIA MATEMÁTICA (CON TUS MULTIPLICADORES)
+            if breakout > 0 and extremo > 0:
+                if "ALZA" in direccion:
+                    entrada = breakout * 1.001
+                    sl_extremo = extremo * 0.995
+                    sl_atr = breakout - atr
+                    sl_definitivo = min(sl_extremo, sl_atr) # Stop más lejano hacia abajo
+                    
+                    if entrada > sl_definitivo and sl_definitivo > 0:
+                        riesgo_por_accion = entrada - sl_definitivo
+                        acciones_a_comprar = math.floor(riesgo_usd / riesgo_por_accion)
+                        monto_exposicion = acciones_a_comprar * entrada
+                        take_profit = entrada + (riesgo_por_accion * 2)
+                        acciones_vender_tp = math.ceil(acciones_a_comprar / 2)
+                        
+                        texto_accion = "COMPRAR"
+                        texto_salida = "VENDER"
+                else:
+                    # MATEMÁTICA INVERTIDA PARA CORTOS
+                    entrada = breakout * 0.999 # Entramos un pelito más abajo de la ruptura
+                    sl_extremo = extremo * 1.005 # Le damos un respiro al máximo
+                    sl_atr = breakout + atr
+                    sl_definitivo = max(sl_extremo, sl_atr) # Stop más lejano hacia arriba
+                    
+                    if sl_definitivo > entrada and entrada > 0:
+                        riesgo_por_accion = sl_definitivo - entrada
+                        acciones_a_comprar = math.floor(riesgo_usd / riesgo_por_accion)
+                        monto_exposicion = acciones_a_comprar * entrada
+                        take_profit = entrada - (riesgo_por_accion * 2)
+                        acciones_vender_tp = math.ceil(acciones_a_comprar / 2)
+                        
+                        texto_accion = "VENDER EN CORTO"
+                        texto_salida = "COMPRAR PARA CUBRIR"
+
+                # 3. MOSTRAR RESULTADOS
+                try:
+                    import math # Aseguramos que la librería esté cargada
+                    acc_str = formato_entero(acciones_a_comprar)
+                    acc_tp_str = formato_entero(acciones_vender_tp)
+                    
+                    st.subheader("Plan de Acción")
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Acciones", f"{acc_str}")
+                    c2.metric("Entrada", f"${formato_es(entrada)}")
+                    c3.metric("Stop Loss", f"${formato_es(sl_definitivo)}")
+                    c4.metric("Take Profit (2:1)", f"${formato_es(take_profit)}")
+                    
+                    st.success(f"**Resumen de Ejecución:** Debes **{texto_accion} {acc_str} acciones** de {ticker} a **${formato_es(entrada)}**. Tu exposición de capital será de **${formato_es(monto_exposicion)}**. Al llegar a tu objetivo, debes **{texto_salida} {acc_tp_str} acciones** para asegurar tu ganancia.")
+                except NameError:
+                    st.error("🚨 Esperando datos lógicos: Para ALZA, el Mínimo debe ser menor al Breakout. Para BAJA, el Máximo debe ser mayor al Breakout.")
 
 # ==========================================
 # PESTAÑA 2: BITÁCORA (Nueva Arquitectura)
