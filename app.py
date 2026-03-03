@@ -179,7 +179,7 @@ with tab_calc:
 
                 # 3. MOSTRAR RESULTADOS
                 try:
-                    import math # Aseguramos que la librería esté cargada
+                    import math
                     acc_str = formato_entero(acciones_a_comprar)
                     acc_tp_str = formato_entero(acciones_vender_tp)
                     
@@ -190,7 +190,12 @@ with tab_calc:
                     c3.metric("Stop Loss", f"${formato_es(sl_definitivo)}")
                     c4.metric("Take Profit (2:1)", f"${formato_es(take_profit)}")
                     
-                    st.success(f"**Resumen de Ejecución:** Debes **{texto_accion} {acc_str} acciones** de {ticker} a **${formato_es(entrada)}**. Tu exposición de capital será de **${formato_es(monto_exposicion)}**. Al llegar a tu objetivo, debes **{texto_salida} {acc_tp_str} acciones** para asegurar tu ganancia.")
+                    st.warning(
+                        f"**💡 Resumen de Ejecución:**\n\n"
+                        f"Debes **{texto_accion} {acc_str} acciones** de **{ticker}** a **${formato_es(entrada)}**.\n\n"
+                        f"Tu exposición total será de **${formato_es(monto_exposicion)}**.\n\n"
+                        f"Al llegar a tu objetivo, debes **{texto_salida} {acc_tp_str} acciones** para asegurar tu ganancia."
+                    )
                 except NameError:
                     st.error("🚨 Esperando datos lógicos: Para ALZA, el Mínimo debe ser menor al Breakout. Para BAJA, el Máximo debe ser mayor al Breakout.")
 
@@ -216,7 +221,7 @@ with tab_bitacora:
             col1, col2, col3, col4 = st.columns(4)
             with col1: fecha_entrada = st.date_input("Fecha de Compra")
             with col2: ticker_form = st.text_input("Ticker (Ej: NVDA)").upper()
-            with col3: acciones_totales = st.number_input("Total Acciones", min_value=0, step=1)
+            with col3: acciones_totales = st.number_input("Total Acciones", step=1)
             with col4: precio_entrada_form = st.number_input("Precio Compra ($)", min_value=0.00, step=0.50)
                 
             notas_entrada = st.text_input("Notas de Entrada")
@@ -245,22 +250,22 @@ with tab_bitacora:
             submit_button = st.form_submit_button("💾 Guardar Historial en Base de Datos")
             
             if submit_button:
-                if ticker_form == "" or precio_entrada_form <= 0 or acciones_totales <= 0:
-                    st.warning("⚠️ Ingresa un Ticker, acciones y precio válidos.")
-                elif (acc_s1 + acc_s2 + acc_s3) > acciones_totales:
-                    st.error("⚠️ Error: Vendiste más acciones de las que compraste.")
-                else:
-                    filas_a_guardar = []
-                    monto_entrada = acciones_totales * precio_entrada_form
-                    filas_a_guardar.append([str(fecha_entrada), ticker_form, acciones_totales, precio_entrada_form, monto_entrada, 0.0, 0.0, 0.0, notas_entrada, usuario_actual])
-                    
-                    def procesar_salida(f_fecha, f_acc, f_precio, f_notas):
-                        if f_acc > 0 and f_precio > 0:
-                            monto_salida = f_acc * precio_entrada_form
-                            pl_usd = (f_precio - precio_entrada_form) * f_acc
-                            pl_pct = ((f_precio - precio_entrada_form) / precio_entrada_form) * 100
-                            return [str(f_fecha), ticker_form, f_acc, precio_entrada_form, monto_salida, f_precio, round(pl_pct, 2), round(pl_usd, 2), f_notas, usuario_actual]
-                        return None
+            if ticker_form == "" or precio_entrada_form <= 0 or acciones_totales == 0:
+                st.warning("⚠️ Ingresa un Ticker, acciones (no puede ser cero) y precio válidos.")
+            elif abs(acc_s1 + acc_s2 + acc_s3) > abs(acciones_totales):
+                st.error("⚠️ Error: Ingresaste más salidas parciales que el tamaño de tu posición original.")
+            else:
+                filas_a_guardar = []
+                monto_entrada = acciones_totales * precio_entrada_form
+                filas_a_guardar.append([str(fecha_entrada), ticker_form, acciones_totales, precio_entrada_form, monto_entrada, 0.0, 0.0, 0.0, notas_entrada, usuario_actual])
+
+                def procesar_salida(f_fecha, f_acc, f_precio, f_notas):
+                    if abs(f_acc) > 0 and f_precio > 0:
+                        monto_salida = f_acc * precio_entrada_form
+                        pl_usd = (f_precio - precio_entrada_form) * f_acc
+                        pl_pct = ((f_precio - precio_entrada_form) / precio_entrada_form) * 100
+                        return [str(f_fecha), ticker_form, f_acc, precio_entrada_form, monto_salida, f_precio, round(pl_pct, 2), round(pl_usd, 2), f_notas, usuario_actual]
+                    return None
                     
                     s1 = procesar_salida(fecha_s1, acc_s1, precio_s1, notas_s1)
                     if s1: filas_a_guardar.append(s1)
@@ -285,7 +290,7 @@ with tab_bitacora:
             with st.form("form_abrir_trade", clear_on_submit=True):
                 f_compra = st.date_input("Fecha de Compra")
                 t_compra = st.text_input("Ticker (Ej: TSLA)").upper()
-                a_compra = st.number_input("Cantidad de Acciones", min_value=1, step=1)
+                a_compra = st.number_input("Cantidad de Acciones", step=1)
                 p_compra = st.number_input("Precio de Compra ($)", min_value=0.01, step=0.01)
                 n_compra = st.text_input("Notas Iniciales (Ej: Breakout VCP)")
                 
