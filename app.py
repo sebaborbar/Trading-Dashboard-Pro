@@ -203,186 +203,160 @@ with tab_calc:
 # PESTAÑA 2: BITÁCORA (Nueva Arquitectura)
 # ==========================================
 with tab_bitacora:
-    # El Selector Mágico (Orden corregido y texto limpio)
-    modo_bitacora = st.radio(
-        "🎛️ Selecciona tu modo de trabajo:",
-        ["⏪ Registro Histórico", "🟢 Gestión en Vivo (Portafolio)"],
-        horizontal=True
-    )
-    st.write("---")
-
-    if modo_bitacora == "⏪ Registro Histórico":
-        # --- MODO 1: REGISTRO HISTÓRICO ---
-        st.subheader("📝 Registro Histórico")
-        st.markdown("Ideal para subir trades antiguos o migrar historiales.")
-        
-        with st.form("form_trade_avanzado", clear_on_submit=True):
-            st.markdown("#### 1. Datos de Entrada")
-        col1, col2, col3, col4 = st.columns(4)
-        with col1: fecha_entrada = st.date_input("Fecha de Entrada")
-        with col2: ticker_form = st.text_input("Ticker (Ej: NVDA)").upper()
-        with col3: acciones_totales = st.number_input("Total Acciones", step=1)
-        with col4: precio_entrada_form = st.number_input("Precio Entrada ($)", step=0.50)
-
-        notas_entrada = st.text_input("Notas de Entrada")
-        st.markdown("---")
-
-        st.markdown("#### 2. Salidas Parciales")
-        s1_c1, s1_c2, s1_c3, s1_c4 = st.columns(4)
-        with s1_c1: fecha_s1 = st.date_input("Fecha Salida 1", key="f1")
-        with s1_c2: acc_s1 = st.number_input("Cantidad de Acciones", step=1, key="a1")
-        with s1_c3: precio_s1 = st.number_input("Precio Salida ($)", step=0.5, key="p1")
-        with s1_c4: notas_s1 = st.text_input("Notas Salida 1", key="n1")
-
-        s2_c1, s2_c2, s2_c3, s2_c4 = st.columns(4)
-        with s2_c1: fecha_s2 = st.date_input("Fecha Salida 2", key="f2")
-        with s2_c2: acc_s2 = st.number_input("Cantidad de Acciones", step=1, key="a2")
-        with s2_c3: precio_s2 = st.number_input("Precio Salida ($)", step=0.5, key="p2")
-        with s2_c4: notas_s2 = st.text_input("Notas Salida 2", key="n2")
-
-        s3_c1, s3_c2, s3_c3, s3_c4 = st.columns(4)
-        with s3_c1: fecha_s3 = st.date_input("Fecha Salida 3", key="f3")
-        with s3_c2: acc_s3 = st.number_input("Cantidad de Acciones", step=1, key="a3")
-        with s3_c3: precio_s3 = st.number_input("Precio Salida ($)", step=0.5, key="p3")
-        with s3_c4: notas_s3 = st.text_input("Notas Salida 3", key="n3")
-
+        # El Selector Mágico (Orden corregido y texto limpio)
+        modo_bitacora = st.radio(
+            "🎛️ Selecciona tu modo de trabajo:",
+            ["◀️ Registro Histórico", "🟢 Gestión en Vivo (Portafolio)"],
+            horizontal=True
+        )
         st.write("---")
-        submit_button = st.form_submit_button("💾 Guardar Historial en Base de Datos")
 
-        if submit_button:
-            if ticker_form == "" or precio_entrada_form <= 0 or acciones_totales == 0:
-                st.warning("⚠️ Ingresa un Ticker, acciones (no puede ser cero) y precio válidos.")
-            elif abs(acc_s1 + acc_s2 + acc_s3) > abs(acciones_totales):
-                st.error("⚠️ Error: Ingresaste más salidas parciales que el tamaño de tu posición original.")
-            else:
-                filas_a_guardar = []
-                monto_entrada = acciones_totales * precio_entrada_form
-                filas_a_guardar.append([str(fecha_entrada), ticker_form, acciones_totales, precio_entrada_form, monto_entrada, 0.0, 0.0, 0.0, notas_entrada, usuario_actual])
+        if modo_bitacora == "◀️ Registro Histórico":
+            # --- MODO 1: REGISTRO HISTÓRICO ---
+            st.subheader("📄 Registro Histórico")
+            st.markdown("Ideal para subir trades antiguos o migrar historiales.")
 
-                def procesar_salida(f_fecha, f_acc, f_precio, f_notas):
-                    if abs(f_acc) > 0 and f_precio > 0:
-                        monto_salida = f_acc * precio_entrada_form
-                        
-                        # MOTOR INTELIGENTE: Detectar si el trade fue Long o Short
-                        if acciones_totales > 0: # Es un LONG
-                            pl_usd = (f_precio - precio_entrada_form) * abs(f_acc)
-                            pl_pct = ((f_precio - precio_entrada_form) / precio_entrada_form) * 100
-                        else: # Es un SHORT
-                            pl_usd = (precio_entrada_form - f_precio) * abs(f_acc)
-                            pl_pct = ((precio_entrada_form - f_precio) / precio_entrada_form) * 100
-                            
-                        return [str(f_fecha), ticker_form, f_acc, precio_entrada_form, monto_salida, f_precio, round(pl_pct, 2), round(pl_usd, 2), f_notas, usuario_actual]
-                    return None
+            with st.form("form_trade_avanzado", clear_on_submit=True):
+                st.markdown("#### 1. Datos de Entrada")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1: fecha_entrada = st.date_input("Fecha de Entrada")
+                with col2: ticker_form = st.text_input("Ticker (Ej: NVDA)").upper()
+                with col3: acciones_totales = st.number_input("Total Acciones", step=1)
+                with col4: precio_entrada_form = st.number_input("Precio Entrada ($)", step=0.50)
 
-                s1 = procesar_salida(fecha_s1, acc_s1, precio_s1, notas_s1)
-                if s1: filas_a_guardar.append(s1)
-                
-                s2 = procesar_salida(fecha_s2, acc_s2, precio_s2, notas_s2)
-                if s2: filas_a_guardar.append(s2)
-                
-                s3 = procesar_salida(fecha_s3, acc_s3, precio_s3, notas_s3)
-                if s3: filas_a_guardar.append(s3)
+                notas_entrada = st.text_input("Notas de Entrada")
+                st.markdown("---")
 
-                try:
-                    sheet.append_rows(filas_a_guardar)
-                    st.success(f"¡Éxito! Se registraron {len(filas_a_guardar)} filas para {ticker_form}.")
-                except Exception as e:
-                    st.error(f"Hubo un problema con Google Sheets: {e}")
+                st.markdown("#### 2. Salidas Parciales")
+                s1_c1, s1_c2, s1_c3, s1_c4 = st.columns(4)
+                with s1_c1: fecha_s1 = st.date_input("Fecha Salida 1", key="f1")
+                with s1_c2: acc_s1 = st.number_input("Cantidad de Acciones", step=1, key="a1")
+                with s1_c3: precio_s1 = st.number_input("Precio Salida ($)", step=0.5, key="p1")
+                with s1_c4: notas_s1 = st.text_input("Notas Salida 1", key="n1")
 
-    else:
-        # --- MODO 2: GESTIÓN EN VIVO (Gestor de Portafolio) ---
-        col_izq, col_der = st.columns([1, 1.2])
-        
-        with col_izq:
-            st.markdown("#### 🚀 Abrir Nueva Operación")
-            st.markdown("Dispara tu entrada al mercado aquí.")
-            with st.form("form_abrir_trade", clear_on_submit=True):
-                f_compra = st.date_input("Fecha de Compra")
-                t_compra = st.text_input("Ticker (Ej: TSLA)").upper()
-                a_compra = st.number_input("Cantidad de Acciones", step=1)
-                p_compra = st.number_input("Precio de Compra ($)", min_value=0.01, step=0.01)
-                n_compra = st.text_input("Notas Iniciales (Ej: Breakout VCP)")
-                
-                btn_abrir = st.form_submit_button("🛒 Entrar al Mercado")
-                
-                if btn_abrir:
-                    if t_compra != "" and p_compra > 0:
-                        monto = a_compra * p_compra
-                        # Precio salida y P/L se envían como 0.0 para marcarlo como Posición Abierta
-                        fila = [str(f_compra), t_compra, a_compra, p_compra, monto, 0.0, 0.0, 0.0, n_compra, usuario_actual]
-                        try:
-                            sheet.append_row(fila)
-                            st.success(f"¡Posición abierta! Presiona **F5** para ver a {t_compra} en tu Portafolio.")
-                        except Exception as e:
-                            st.error(f"Error: {e}")
-                    else:
-                        st.warning("⚠️ Revisa el Ticker y el precio.")
+                s2_c1, s2_c2, s2_c3, s2_c4 = st.columns(4)
+                with s2_c1: fecha_s2 = st.date_input("Fecha Salida 2", key="f2")
+                with s2_c2: acc_s2 = st.number_input("Cantidad de Acciones", step=1, key="a2")
+                with s2_c3: precio_s2 = st.number_input("Precio Salida ($)", step=0.5, key="p2")
+                with s2_c4: notas_s2 = st.text_input("Notas Salida 2", key="n2")
 
-        with col_der:
-            st.markdown("#### 💼 Portafolio Activo")
-            if conexion_exitosa and not df.empty:
-                # El cerebro del Portafolio: Calcula qué está abierto y qué está cerrado
-                portafolio = {}
-                for t in df['Ticker'].unique():
-                    df_t = df[df['Ticker'] == t]
-                    # Asumimos que P/L $ == 0 son las Compras (Entradas) y != 0 son Ventas (Salidas)
-                    compras = df_t[df_t['P/L $'] == 0]['Acciones'].sum()
-                    ventas = df_t[df_t['P/L $'] != 0]['Acciones'].sum()
-                    abiertas = compras - ventas
-                    
-                    if abiertas > 0:
-                        # Buscamos el precio de entrada promedio de esas acciones
-                        compras_df = df_t[df_t['P/L $'] == 0]
-                        px_promedio = (compras_df['Acciones'] * compras_df['Precio Entrada']).sum() / compras if compras > 0 else 0
-                        
-                        portafolio[t] = {
-                            "Acciones": int(abiertas),
-                            "Precio Promedio": px_promedio
-                        }
-                
-                if portafolio:
-                    # Dibujamos las tarjetas del portafolio
-                    for t, data in portafolio.items():
-                        st.info(f"**{t}** | 📦 {formato_entero(data['Acciones'])} acciones abiertas | 🎯 P. Promedio: ${formato_es(data['Precio Promedio'])}")
-                    
-                    st.markdown("##### ✂️ Registrar Salida (Scaling Out)")
-                    with st.form("form_cerrar_trade", clear_on_submit=True):
-                        t_salida = st.selectbox("Selecciona la posición a gestionar:", list(portafolio.keys()))
-                        col_s1, col_s2 = st.columns(2)
-                        with col_s1:
-                            f_salida = st.date_input("Fecha de Salida")
-                            a_salida = st.number_input("Acciones a Vender", min_value=1, step=1)
-                        with col_s2:
-                            p_salida = st.number_input("Precio de Venta ($)", min_value=0.01, step=0.01)
-                            n_salida = st.text_input("Notas de Venta")
-                            
-                        btn_cerrar = st.form_submit_button("💰 Ejecutar Salida")
-                        
-                        if btn_cerrar:
-                            if a_salida > portafolio[t_salida]["Acciones"]:
-                                st.error("⚠️ No puedes vender más acciones de las que tienes abiertas en el portafolio.")
-                            elif p_salida <= 0:
-                                st.error("⚠️ Precio de venta inválido.")
-                            else:
-                                px_ent = portafolio[t_salida]["Precio Promedio"]
-                                monto_s = a_salida * px_ent
-                                pl_usd = (p_salida - px_ent) * a_salida
-                                pl_pct = ((p_salida - px_ent) / px_ent) * 100
-                                
-                                fila_salida = [str(f_salida), t_salida, a_salida, px_ent, monto_s, p_salida, round(pl_pct, 2), round(pl_usd, 2), n_salida, usuario_actual]
-                                
-                                try:
-                                    sheet.append_row(fila_salida)
-                                    st.success(f"¡Venta registrada! Liquidaste {a_salida} acciones de {t_salida}. Presiona **F5** para actualizar.")
-                                except Exception as e:
-                                    st.error(f"Error al guardar: {e}")
+                s3_c1, s3_c2, s3_c3, s3_c4 = st.columns(4)
+                with s3_c1: fecha_s3 = st.date_input("Fecha Salida 3", key="f3")
+                with s3_c2: acc_s3 = st.number_input("Cantidad de Acciones", step=1, key="a3")
+                with s3_c3: precio_s3 = st.number_input("Precio Salida ($)", step=0.5, key="p3")
+                with s3_c4: notas_s3 = st.text_input("Notas Salida 3", key="n3")
+
+                st.write("---")
+                submit_button = st.form_submit_button("💾 Guardar Historial en Base de Datos")
+
+            if submit_button:
+                if ticker_form == "" or precio_entrada_form <= 0 or acciones_totales == 0:
+                    st.warning("⚠️ Ingresa un Ticker, acciones (no puede ser cero) y precio válidos.")
+                elif abs(acc_s1 + acc_s2 + acc_s3) > abs(acciones_totales):
+                    st.error("⚠️ Error: Ingresaste más salidas parciales que el tamaño de tu posición original.")
                 else:
-                    st.success("Tus manos están libres. No tienes operaciones abiertas actualmente. ¡Busca el próximo setup! 🦅")
+                    filas_a_guardar = []
+                    monto_entrada = acciones_totales * precio_entrada_form
+                    filas_a_guardar.append([str(fecha_entrada), ticker_form, acciones_totales, precio_entrada_form, monto_entrada, 0.0, 0.0, 0.0, notas_entrada, usuario_actual])
+
+                    def procesar_salida(f_fecha, f_acc, f_precio, f_notas):
+                        if abs(f_acc) > 0 and f_precio > 0:
+                            monto_salida = f_acc * precio_entrada_form
+                            
+                            # MOTOR INTELIGENTE: Detectar si el trade fue Long o Short
+                            if acciones_totales > 0: # Es un LONG
+                                pl_usd = (f_precio - precio_entrada_form) * abs(f_acc)
+                                pl_pct = ((f_precio - precio_entrada_form) / precio_entrada_form) * 100
+                            else: # Es un SHORT
+                                pl_usd = (precio_entrada_form - f_precio) * abs(f_acc)
+                                pl_pct = ((precio_entrada_form - f_precio) / precio_entrada_form) * 100
+                                
+                            return [str(f_fecha), ticker_form, f_acc, precio_entrada_form, monto_salida, f_precio, round(pl_pct, 2), round(pl_usd, 2), f_notas, usuario_actual]
+                        return None
+
+                    s1 = procesar_salida(fecha_s1, acc_s1, precio_s1, notas_s1)
+                    if s1: filas_a_guardar.append(s1)
+                    
+                    s2 = procesar_salida(fecha_s2, acc_s2, precio_s2, notas_s2)
+                    if s2: filas_a_guardar.append(s2)
+                    
+                    s3 = procesar_salida(fecha_s3, acc_s3, precio_s3, notas_s3)
+                    if s3: filas_a_guardar.append(s3)
+
+                    try:
+                        sheet.append_rows(filas_a_guardar)
+                        st.success(f"¡Éxito! Se registraron {len(filas_a_guardar)} filas para {ticker_form}.")
+                    except Exception as e:
+                        st.error(f"Hubo un problema con Google Sheets: {e}")
+
+        else:
+            # --- MODO 2: GESTIÓN EN VIVO (Gestor de Portafolio) ---
+            col_izq, col_der = st.columns([1, 1.2])
+
+            with col_izq:
+                st.markdown("#### 🚀 Abrir Nueva Operación")
+                st.markdown("Dispara tu entrada al mercado aquí.")
+                with st.form("form_abrir_trade", clear_on_submit=True):
+                    f_compra = st.date_input("Fecha de Compra")
+                    t_compra = st.text_input("Ticker (Ej: TSLA)").upper()
+                    a_compra = st.number_input("Cantidad de Acciones", step=1)
+                    p_compra = st.number_input("Precio de Compra ($)", min_value=0.01, step=0.01)
+                    n_compra = st.text_input("Notas Iniciales (Ej: Breakout VCP)")
+                    
+                    btn_abrir = st.form_submit_button("🛒 Entrar al Mercado")
+                    
+                    if btn_abrir:
+                        if t_compra != "" and p_compra > 0:
+                            monto = a_compra * p_compra
+                            # Precio salida y P/L se envían como 0.0 para marcarlo como Posición Abierta
+                            fila = [str(f_compra), t_compra, a_compra, p_compra, monto, 0.0, 0.0, 0.0, n_compra, usuario_actual]
+                            try:
+                                sheet.append_row(fila)
+                                st.success(f"¡Posición abierta! Presiona **F5** para ver a {t_compra} en tu Portafolio.")
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+                        else:
+                            st.warning("⚠️ Revisa el Ticker y el precio.")
+
+            with col_der:
+                st.markdown("#### 💼 Portafolio Activo")
+                if conexion_exitosa and not df.empty:
+                    # El cerebro del Portafolio: Calcula qué está abierto y qué está cerrado
+                    portafolio = {}
+                    for t in df['Ticker'].unique():
+                        df_t = df[df['Ticker'] == t]
+                        # Asumimos que P/L $ == 0 son las Compras (Entradas) y != 0 son Ventas (Salidas)
+                        compras = df_t[df_t['P/L $'] == 0]['Acciones'].sum()
+                        ventas = df_t[df_t['P/L $'] != 0]['Acciones'].sum()
+                        
+                        acciones_actuales = compras - ventas
+                        if acciones_actuales > 0:
+                            precio_promedio = df_t[df_t['P/L $'] == 0]['Precio Compra/Venta'].mean()
+                            portafolio[t] = {'Acciones': acciones_actuales, 'Precio Promedio': precio_promedio}
+                    
+                    if portafolio:
+                        # Convertir a DataFrame para mostrar
+                        df_portafolio = pd.DataFrame.from_dict(portafolio, orient='index').reset_index()
+                        df_portafolio.rename(columns={'index': 'Ticker'}, inplace=True)
+                        st.dataframe(df_portafolio, use_container_width=True)
+                        
+                        st.markdown("#### 🎯 Registrar Salida")
+                        with st.form("form_cerrar_trade", clear_on_submit=True):
+                            t_venta = st.selectbox("Selecciona Posición a Cerrar", df_portafolio['Ticker'].tolist())
+                            f_venta = st.date_input("Fecha de Salida")
+                            a_venta = st.number_input("Acciones a Vender", step=1)
+                            p_venta = st.number_input("Precio de Salida ($)", min_value=0.01, step=0.01)
+                            n_venta = st.text_input("Notas de Salida")
+                            
+                            btn_cerrar = st.form_submit_button("💰 Registrar Salida")
+                            
+                            if btn_cerrar:
+                                max_acc = portafolio[t_venta
 
 # ==========================================
 # PESTAÑA 3: MÉTRICAS (Dashboard Avanzado)
 # ==========================================
-with tab_dash:
+    with tab_dash:
     st.subheader("📊 Métricas de Rendimiento y Análisis") 
     
     st.markdown("##### ⚙️ Configuración y Filtros")
