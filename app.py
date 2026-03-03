@@ -248,19 +248,19 @@ with tab_bitacora:
 
         st.write("---")
         submit_button = st.form_submit_button("💾 Guardar Historial en Base de Datos")
-            
-        if submit_button:
-                if ticker_form == "" or precio_entrada_form <= 0 or acciones_totales == 0:
-                    st.warning("⚠️ Ingresa un Ticker, acciones (no puede ser cero) y precio válidos.")
-                elif abs(acc_s1 + acc_s2 + acc_s3) > abs(acciones_totales):
-                    st.error("⚠️ Error: Ingresaste más salidas parciales que el tamaño de tu posición original.")
-                else:
-                    filas_a_guardar = []
-                    monto_entrada = acciones_totales * precio_entrada_form
-                    filas_a_guardar.append([str(fecha_entrada), ticker_form, acciones_totales, precio_entrada_form, monto_entrada, 0.0, 0.0, 0.0, notas_entrada, usuario_actual])
 
-                    def procesar_salida(f_fecha, f_acc, f_precio, f_notas):
-                     if abs(f_acc) > 0 and f_precio > 0:
+        if submit_button:
+            if ticker_form == "" or precio_entrada_form <= 0 or acciones_totales == 0:
+                st.warning("⚠️ Ingresa un Ticker, acciones (no puede ser cero) y precio válidos.")
+            elif abs(acc_s1 + acc_s2 + acc_s3) > abs(acciones_totales):
+                st.error("⚠️ Error: Ingresaste más salidas parciales que el tamaño de tu posición original.")
+            else:
+                filas_a_guardar = []
+                monto_entrada = acciones_totales * precio_entrada_form
+                filas_a_guardar.append([str(fecha_entrada), ticker_form, acciones_totales, precio_entrada_form, monto_entrada, 0.0, 0.0, 0.0, notas_entrada, usuario_actual])
+
+                def procesar_salida(f_fecha, f_acc, f_precio, f_notas):
+                    if abs(f_acc) > 0 and f_precio > 0:
                         monto_salida = f_acc * precio_entrada_form
                         
                         # MOTOR INTELIGENTE: Detectar si el trade fue Long o Short
@@ -272,20 +272,22 @@ with tab_bitacora:
                             pl_pct = ((precio_entrada_form - f_precio) / precio_entrada_form) * 100
                             
                         return [str(f_fecha), ticker_form, f_acc, precio_entrada_form, monto_salida, f_precio, round(pl_pct, 2), round(pl_usd, 2), f_notas, usuario_actual]
-                     return None
-                    
-                    s1 = procesar_salida(fecha_s1, acc_s1, precio_s1, notas_s1)
-                    if s1: filas_a_guardar.append(s1)
-                    s2 = procesar_salida(fecha_s2, acc_s2, precio_s2, notas_s2)
-                    if s2: filas_a_guardar.append(s2)
-                    s3 = procesar_salida(fecha_s3, acc_s3, precio_s3, notas_s3)
-                    if s3: filas_a_guardar.append(s3)
-                    
-                    try:
-                        sheet.append_rows(filas_a_guardar)
-                        st.success(f"¡Éxito! Se registraron {len(filas_a_guardar)} filas para {ticker_form}.")
-                    except Exception as e:
-                        st.error(f"Hubo un problema con Google Sheets: {e}")
+                    return None
+
+                s1 = procesar_salida(fecha_s1, acc_s1, precio_s1, notas_s1)
+                if s1: filas_a_guardar.append(s1)
+                
+                s2 = procesar_salida(fecha_s2, acc_s2, precio_s2, notas_s2)
+                if s2: filas_a_guardar.append(s2)
+                
+                s3 = procesar_salida(fecha_s3, acc_s3, precio_s3, notas_s3)
+                if s3: filas_a_guardar.append(s3)
+
+                try:
+                    sheet.append_rows(filas_a_guardar)
+                    st.success(f"¡Éxito! Se registraron {len(filas_a_guardar)} filas para {ticker_form}.")
+                except Exception as e:
+                    st.error(f"Hubo un problema con Google Sheets: {e}")
 
     else:
         # --- MODO 2: GESTIÓN EN VIVO (Gestor de Portafolio) ---
