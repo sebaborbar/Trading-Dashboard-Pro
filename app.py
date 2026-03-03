@@ -372,7 +372,7 @@ with tab_bitacora:
 # ==========================================
 # PESTAÑA 3: MÉTRICAS (Dashboard Avanzado)
 # ==========================================
-    with tab_dash:
+with tab_dash:
     st.subheader("📊 Métricas de Rendimiento y Análisis") 
     
     st.markdown("##### ⚙️ Configuración y Filtros")
