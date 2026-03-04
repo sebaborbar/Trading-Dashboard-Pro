@@ -331,7 +331,7 @@ with tab_bitacora:
                         
                         acciones_actuales = compras - ventas
                         if abs(acciones_actuales) > 0:
-                         precio_promedio = df_t[df_t['P/L $'] == 0]['Precio Compra/Venta'].mean()
+                            precio_promedio = df_t[df_t['P/L $'] == 0]['Precio Compra/Venta'].mean()
                         portafolio[t] = {'Acciones': acciones_actuales, 'Precio Promedio': precio_promedio}
                 
                 if portafolio:
