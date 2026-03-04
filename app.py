@@ -330,44 +330,50 @@ with tab_bitacora:
                         ventas = df_t[df_t['P/L $'] != 0]['Acciones'].sum()
                         
                         acciones_actuales = compras - ventas
-                        if acciones_actuales > 0:
-                            precio_promedio = df_t[df_t['P/L $'] == 0]['Precio Compra/Venta'].mean()
-                            portafolio[t] = {'Acciones': acciones_actuales, 'Precio Promedio': precio_promedio}
+                        if abs(acciones_actuales) > 0:
+                         precio_promedio = df_t[df_t['P/L $'] == 0]['Precio Compra/Venta'].mean()
+                        portafolio[t] = {'Acciones': acciones_actuales, 'Precio Promedio': precio_promedio}
+                
+                if portafolio:
+                    # Convertir a DataFrame para mostrar
+                    df_portafolio = pd.DataFrame.from_dict(portafolio, orient='index').reset_index()
+                    df_portafolio.rename(columns={'index': 'Ticker'}, inplace=True)
+                    st.dataframe(df_portafolio, use_container_width=True)
                     
-                    if portafolio:
-                        # Convertir a DataFrame para mostrar
-                        df_portafolio = pd.DataFrame.from_dict(portafolio, orient='index').reset_index()
-                        df_portafolio.rename(columns={'index': 'Ticker'}, inplace=True)
-                        st.dataframe(df_portafolio, use_container_width=True)
+                    st.markdown("#### 🎯 Registrar Salida")
+                    with st.form("form_cerrar_trade", clear_on_submit=True):
+                        t_venta = st.selectbox("Selecciona Posición a Cerrar", df_portafolio['Ticker'].tolist())
+                        f_venta = st.date_input("Fecha de Salida")
+                        a_venta = st.number_input("Acciones a Vender", step=1)
+                        p_venta = st.number_input("Precio de Salida ($)", min_value=0.01, step=0.01)
+                        n_venta = st.text_input("Notas de Salida")
                         
-                        st.markdown("#### 🎯 Registrar Salida")
-                        with st.form("form_cerrar_trade", clear_on_submit=True):
-                            t_venta = st.selectbox("Selecciona Posición a Cerrar", df_portafolio['Ticker'].tolist())
-                            f_venta = st.date_input("Fecha de Salida")
-                            a_venta = st.number_input("Acciones a Vender", step=1)
-                            p_venta = st.number_input("Precio de Salida ($)", min_value=0.01, step=0.01)
-                            n_venta = st.text_input("Notas de Salida")
-                            
-                            btn_cerrar = st.form_submit_button("💰 Registrar Salida")
-                            
-                            if btn_cerrar:
-                                max_acc = portafolio[t_venta]['Acciones']
-                                if a_venta > 0 and p_venta > 0 and a_venta <= max_acc:
-                                    p_promedio = portafolio[t_venta]['Precio Promedio']
-                                    monto_venta = a_venta * p_promedio
-                                    pl_usd = (p_venta - p_promedio) * a_venta
+                        btn_cerrar = st.form_submit_button("💰 Registrar Salida")
+                        
+                        if btn_cerrar:
+                            max_acc = portafolio[t_venta]['Acciones']
+                            if abs(a_venta) > 0 and p_venta > 0 and abs(a_venta) <= abs(max_acc):
+                                p_promedio = portafolio[t_venta]['Precio Promedio']
+                                monto_venta = a_venta * p_promedio
+                                
+                                # LÓGICA BILINGÜE PARA GESTIÓN EN VIVO
+                                if max_acc > 0: # LONG
+                                    pl_usd = (p_venta - p_promedio) * abs(a_venta)
                                     pl_pct = ((p_venta - p_promedio) / p_promedio) * 100
+                                else: # SHORT
+                                    pl_usd = (p_promedio - p_venta) * abs(a_venta)
+                                    pl_pct = ((p_promedio - p_venta) / p_promedio) * 100
                                     
-                                    fila_salida = [str(f_venta), t_venta, a_venta, p_promedio, monto_venta, p_venta, round(pl_pct, 2), round(pl_usd, 2), n_venta, usuario_actual]
-                                    try:
-                                        sheet.append_row(fila_salida)
-                                        st.success(f"¡Salida de {t_venta} registrada! Ganancia/Pérdida: ${round(pl_usd,2)}. Presiona **F5**.")
-                                    except Exception as e:
-                                        st.error(f"Error al guardar: {e}")
-                                else:
-                                    st.warning(f"⚠️ Revisa los datos. No puedes vender más de {max_acc} acciones.")
-                    else:
-                        st.success("Tus manos están libres. No tienes operaciones abiertas actualmente. ¡Busca el próximo setup! 🎯")
+                                fila_salida = [str(f_venta), t_venta, a_venta, p_promedio, monto_venta, p_venta, round(pl_pct, 2), round(pl_usd, 2), n_venta, usuario_actual]
+                                try:
+                                    sheet.append_row(fila_salida)
+                                    st.success(f"¡Salida de {t_venta} registrada! Ganancia/Pérdida: ${round(pl_usd,2)}. Presiona **F5**.")
+                                except Exception as e:
+                                    st.error(f"Error al guardar: {e}")
+                            else:
+                                st.warning(f"⚠️ Revisa los datos. No puedes vender más de {abs(max_acc)} acciones.")
+                else:
+                    st.success("Tus manos están libres. No tienes operaciones abiertas actualmente. ¡Busca el próximo setup! 🎯")
 
 # ==========================================
 # PESTAÑA 3: MÉTRICAS (Dashboard Avanzado)
