@@ -323,7 +323,7 @@ with tab_bitacora:
                     t_compra = st.text_input("Ticker (Ej: TSLA)").upper()
                     a_compra = st.number_input("Cantidad de Acciones", step=1)
                     p_compra = st.number_input("Precio de Compra ($)", min_value=0.01, step=0.01)
-                    n_compra = st.text_input("Notas Iniciales (Ej: Breakout HTF)")
+                    n_compra = st.text_input("Notas Iniciales (Ej: Entrada Power Kick)")
                     
                     btn_abrir = st.form_submit_button("🛒 Entrar al Mercado")
                     
