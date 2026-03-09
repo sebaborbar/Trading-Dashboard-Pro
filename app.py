@@ -277,7 +277,7 @@ with tab_bitacora:
 
                     def procesar_salida(f_fecha, f_acc, f_precio, f_notas):
                         if abs(f_acc) > 0 and f_precio > 0:
-                            monto_salida = f_acc * precio_entrada_form
+                            monto_salida = abs(f_acc) * f_precio
                             
                             # MOTOR INTELIGENTE: Detectar si el trade fue Long o Short
                             if acciones_totales > 0: # Es un LONG
@@ -361,7 +361,7 @@ with tab_bitacora:
                         if tenencia_neta != 0:
                             # Calculamos el precio promedio protegiéndonos de errores "None"
                             df_entradas = df_t[df_t['P/L $'] == 0]
-                            precio_promedio = df_entradas['Precio Entrada'].mean() if not df_entradas.empty else 0.0
+                            precio_promedio = (df_entradas['Acciones'].abs() * df_entradas['Precio Entrada']).sum() / df_entradas['Acciones'].abs().sum() if not df_entradas.empty else 0.0
                             
                             portafolio[t] = {'Acciones': tenencia_neta, 'Precio Promedio': precio_promedio}
                 
