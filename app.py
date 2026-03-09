@@ -313,7 +313,7 @@ with tab_bitacora:
                 st.markdown("#### 🚀 Abrir Nueva Operación")
                 st.markdown("Dispara tu entrada al mercado aquí.")
                 with st.form("form_abrir_trade", clear_on_submit=True):
-                    f_compra = st.date_input("Fecha de Compra")
+                    f_compra = st.date_input("Fecha de Compra", format="DD/MM/YYYY")
                     t_compra = st.text_input("Ticker (Ej: TSLA)").upper()
                     a_compra = st.number_input("Cantidad de Acciones", step=1)
                     p_compra = st.number_input("Precio de Compra ($)", min_value=0.01, step=0.01)
@@ -374,7 +374,7 @@ with tab_bitacora:
                     st.markdown("#### 🎯 Registrar Salida")
                     with st.form("form_cerrar_trade", clear_on_submit=True):
                         t_venta = st.selectbox("Selecciona Posición a Cerrar", df_portafolio['Ticker'].tolist())
-                        f_venta = st.date_input("Fecha de Salida")
+                        f_venta = st.date_input("Fecha de Salida", format="DD/MM/YYYY")
                         a_venta = st.number_input("Cantidad de Acciones", step=1)
                         p_venta = st.number_input("Precio de Salida ($)", min_value=0.01, step=0.01)
                         n_venta = st.text_input("Notas de Salida")
