@@ -520,6 +520,9 @@ with tab_dash:
                 columnas_mostrar = ['Fecha', 'Ticker', 'Acciones', 'Precio Entrada', 'Precio Salida', 'P/L %', 'P/L $', 'Notas']
                 df_mostrar = df_filtrado[columnas_mostrar].copy()
                 
+                # Formatear la columna de Fecha a DD/MM/AAAA
+                df_mostrar['Fecha'] = pd.to_datetime(df_mostrar['Fecha']).dt.strftime('%d/%m/%Y')
+                
                 df_mostrar['Precio Entrada'] = df_mostrar['Precio Entrada'].apply(lambda x: f"${formato_es(x)}")
                 df_mostrar['Precio Salida'] = df_mostrar['Precio Salida'].apply(lambda x: f"${formato_es(x)}")
                 df_mostrar['P/L %'] = df_mostrar['P/L %'].apply(lambda x: f"{formato_es(x)}%")
