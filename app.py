@@ -375,7 +375,7 @@ with tab_bitacora:
                     with st.form("form_cerrar_trade", clear_on_submit=True):
                         t_venta = st.selectbox("Selecciona Posición a Cerrar", df_portafolio['Ticker'].tolist())
                         f_venta = st.date_input("Fecha de Salida")
-                        a_venta = st.number_input("Acciones a Vender", step=1)
+                        a_venta = st.number_input("Cantidad de Acciones", step=1)
                         p_venta = st.number_input("Precio de Salida ($)", min_value=0.01, step=0.01)
                         n_venta = st.text_input("Notas de Salida")
                         
