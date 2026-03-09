@@ -398,7 +398,20 @@ with tab_bitacora:
                                 fila_salida = [str(f_venta), t_venta, a_venta, p_promedio, monto_venta, p_venta, round(pl_pct, 2), round(pl_usd, 2), n_venta, usuario_actual]
                                 try:
                                     sheet.append_row(fila_salida)
-                                    st.success(f"¡Salida de {t_venta} registrada! Ganancia/Pérdida: ${round(pl_usd,2)}. Presiona **F5**.")
+                                    
+                                    # 📊 CREAMOS EL MENSAJE MULTILÍNEA PROFESIONAL
+                                    resumen = (
+                                        f"¡Salida de **{t_venta}** registrada!\n\n"
+                                        f"**Ganancia/Pérdida:** ${formato_es(pl_usd)}\n\n"
+                                        f"Presiona **F5** para actualizar."
+                                    )
+                                    
+                                    # 🚦 SEMÁFORO INTELIGENTE
+                                    if pl_usd >= 0:
+                                        st.success(resumen) # Fondo Verde
+                                    else:
+                                        st.error(resumen)   # Fondo Rojo
+                                        
                                 except Exception as e:
                                     st.error(f"Error al guardar: {e}")
                             else:
