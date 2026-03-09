@@ -27,7 +27,7 @@ if not st.session_state['logeado']:
             if submit:
                 # 📝 DICCIONARIO DE ALUMNOS (Usuario : Contraseña)
                 usuarios_autorizados = {
-                    "Sebastian": "Traders2026!",
+                    "Sebastian": "Traders2026*",
                     "Juan Perez": "Swing2026*",
                     "MariaTrader": "Breakout123"
                 }
@@ -385,7 +385,7 @@ with tab_bitacora:
                             max_acc = portafolio[t_venta]['Acciones']
                             if abs(a_venta) > 0 and p_venta > 0 and abs(a_venta) <= abs(max_acc):
                                 p_promedio = portafolio[t_venta]['Precio Promedio']
-                                monto_venta = a_venta * p_promedio
+                                monto_venta = abs(a_venta) * p_venta
                                 
                                 # LÓGICA BILINGÜE PARA GESTIÓN EN VIVO
                                 if max_acc > 0: # LONG
@@ -543,31 +543,35 @@ with tab_dash:
     with st.expander("🗑️ Eliminar un registro de la base de datos"):
         st.warning("⚠️ Cuidado: Al eliminar un registro, se borrará definitivamente de la base de datos.")
         
-        # Leemos la hoja completa
-        df_eliminar = pd.DataFrame(sheet.get_all_records())
-        
         if not df_eliminar.empty:
-            # La fila 1 son los títulos, la data empieza en la 2
-            df_eliminar['Fila_Excel'] = df_eliminar.index + 2
-            
-            # SOLUCIÓN BLINDADA: Tomamos las columnas por su orden (0, 1 y 2) ignorando sus nombres
-            col_1 = df_eliminar.columns[0] # Usualmente Fecha
-            col_2 = df_eliminar.columns[1] # Usualmente Ticker
-            col_3 = df_eliminar.columns[2] # Usualmente Acciones
-            
-            df_eliminar['Etiqueta'] = df_eliminar[col_1].astype(str) + " | " + df_eliminar[col_2].astype(str) + " | Acciones: " + df_eliminar[col_3].astype(str)
-            
-            opciones_borrar = dict(zip(df_eliminar['Etiqueta'], df_eliminar['Fila_Excel']))
-            
-            trade_a_borrar = st.selectbox("Selecciona la operación que deseas eliminar:", options=[""] + list(opciones_borrar.keys()))
-            
-            if st.button("🗑️ Eliminar Definitivamente"):
-                if trade_a_borrar != "":
-                    fila_exacta = opciones_borrar[trade_a_borrar]
-                    sheet.delete_rows(int(fila_exacta))
-                    st.success(f"✅ Registro eliminado con éxito.")
-                    st.rerun()
-                else:
-                    st.error("⚠️ Por favor, selecciona una operación de la lista.")
+            # 🛡️ FILTRO DE SEGURIDAD: Solo ver lo propio
+            if 'Usuario' in df_eliminar.columns:
+                df_eliminar = df_eliminar[df_eliminar['Usuario'] == usuario_actual]
+
+            if not df_eliminar.empty:
+                # La fila 1 son los títulos, la data empieza en la 2
+                df_eliminar['Fila_Excel'] = df_eliminar.index + 2
+                
+                # SOLUCIÓN BLINDADA: Columnas por orden
+                col_1 = df_eliminar.columns[0] # Fecha
+                col_2 = df_eliminar.columns[1] # Ticker
+                col_3 = df_eliminar.columns[2] # Acciones
+                
+                df_eliminar['Etiqueta'] = df_eliminar[col_1].astype(str) + " | " + df_eliminar[col_2].astype(str) + " | Acciones: " + df_eliminar[col_3].astype(str)
+                
+                opciones_borrar = dict(zip(df_eliminar['Etiqueta'], df_eliminar['Fila_Excel']))
+                
+                trade_a_borrar = st.selectbox("Selecciona la operación que deseas eliminar:", options=[""] + list(opciones_borrar.keys()))
+                
+                if st.button("🗑️ Eliminar Definitivamente"):
+                    if trade_a_borrar != "":
+                        fila_exacta = opciones_borrar[trade_a_borrar]
+                        sheet.delete_rows(int(fila_exacta))
+                        st.success(f"✅ Registro eliminado con éxito.")
+                        st.rerun()
+                    else:
+                        st.error("⚠️ Por favor, selecciona una operación de la lista.")
+            else:
+                st.info("No tienes operaciones registradas para eliminar.")
         else:
-            st.info("No hay operaciones registradas para eliminar.")
+            st.info("No hay operaciones registradas en la base de datos.")
