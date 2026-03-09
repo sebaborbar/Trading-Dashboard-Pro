@@ -321,18 +321,33 @@ with tab_bitacora:
             with col_der:
                 st.markdown("#### 💼 Portafolio Activo")
                 if conexion_exitosa and not df.empty:
-                    # El cerebro del Portafolio: Calcula qué está abierto y qué está cerrado
+                    # 🧠 EL CEREBRO BASADO EN TENENCIA NETA
                     portafolio = {}
                     for t in df['Ticker'].unique():
                         df_t = df[df['Ticker'] == t]
-                        # Asumimos que P/L $ == 0 son las Compras (Entradas) y != 0 son Ventas (Salidas)
-                        compras = df_t[df_t['P/L $'] == 0]['Acciones'].sum()
-                        ventas = df_t[df_t['P/L $'] != 0]['Acciones'].sum()
                         
-                        acciones_actuales = compras - ventas
-                        if abs(acciones_actuales) > 0:
-                            precio_promedio = df_t[df_t['P/L $'] == 0]['Precio Entrada'].mean()
-                            portafolio[t] = {'Acciones': acciones_actuales, 'Precio Promedio': precio_promedio}
+                        # 1. Sumamos las acciones de entrada y las de salida
+                        entradas = df_t[df_t['P/L $'] == 0]['Acciones'].sum()
+                        salidas = df_t[df_t['P/L $'] != 0]['Acciones'].abs().sum() # abs() previene errores de signos
+                        
+                        # 2. Calculamos la tenencia real (lo que posees o debes)
+                        if entradas > 0: 
+                            # LONG: Compraste, por ende restas las ventas
+                            tenencia_neta = entradas - salidas
+                        elif entradas < 0: 
+                            # SHORT: Vendiste en corto, por ende sumas las recompras
+                            tenencia_neta = entradas + salidas
+                        else:
+                            # Si no hay entradas registradas (historial antiguo), la tenencia es 0
+                            tenencia_neta = 0
+                            
+                        # 3. Solo si posees o debes acciones, la posición está abierta
+                        if tenencia_neta != 0:
+                            # Calculamos el precio promedio protegiéndonos de errores "None"
+                            df_entradas = df_t[df_t['P/L $'] == 0]
+                            precio_promedio = df_entradas['Precio Entrada'].mean() if not df_entradas.empty else 0.0
+                            
+                            portafolio[t] = {'Acciones': tenencia_neta, 'Precio Promedio': precio_promedio}
                 
                 if portafolio:
                     # Convertir a DataFrame para mostrar
