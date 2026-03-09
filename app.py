@@ -230,12 +230,12 @@ with tab_bitacora:
         if modo_bitacora == "◀️ Registro Histórico":
             # --- MODO 1: REGISTRO HISTÓRICO ---
             st.subheader("📄 Registro Histórico")
-            st.markdown("Ideal para subir trades antiguos o migrar historiales.")
+            st.markdown("Ideal para subir trades antiguos.")
 
             with st.form("form_trade_avanzado", clear_on_submit=True):
                 st.markdown("#### 1. Datos de Entrada")
                 col1, col2, col3, col4 = st.columns(4)
-                with col1: fecha_entrada = st.date_input("Fecha de Entrada")
+                with col1: fecha_entrada = st.date_input("Fecha de Entrada", format="DD/MM/YYYY")
                 with col2: ticker_form = st.text_input("Ticker (Ej: NVDA)").upper()
                 with col3: acciones_totales = st.number_input("Total Acciones", step=1)
                 with col4: precio_entrada_form = st.number_input("Precio Entrada ($)", step=0.50)
@@ -245,19 +245,19 @@ with tab_bitacora:
 
                 st.markdown("#### 2. Salidas Parciales")
                 s1_c1, s1_c2, s1_c3, s1_c4 = st.columns(4)
-                with s1_c1: fecha_s1 = st.date_input("Fecha Salida 1", key="f1")
+                with s1_c1: fecha_s1 = st.date_input("Fecha Salida 1", key="f1", format="DD/MM/YYYY")
                 with s1_c2: acc_s1 = st.number_input("Cantidad de Acciones", step=1, key="a1")
                 with s1_c3: precio_s1 = st.number_input("Precio Salida ($)", step=0.5, key="p1")
                 with s1_c4: notas_s1 = st.text_input("Notas Salida 1", key="n1")
 
                 s2_c1, s2_c2, s2_c3, s2_c4 = st.columns(4)
-                with s2_c1: fecha_s2 = st.date_input("Fecha Salida 2", key="f2")
+                with s2_c1: fecha_s2 = st.date_input("Fecha Salida 2", key="f2", format="DD/MM/YYYY")
                 with s2_c2: acc_s2 = st.number_input("Cantidad de Acciones", step=1, key="a2")
                 with s2_c3: precio_s2 = st.number_input("Precio Salida ($)", step=0.5, key="p2")
                 with s2_c4: notas_s2 = st.text_input("Notas Salida 2", key="n2")
 
                 s3_c1, s3_c2, s3_c3, s3_c4 = st.columns(4)
-                with s3_c1: fecha_s3 = st.date_input("Fecha Salida 3", key="f3")
+                with s3_c1: fecha_s3 = st.date_input("Fecha Salida 3", key="f3", format="DD/MM/YYYY")
                 with s3_c2: acc_s3 = st.number_input("Cantidad de Acciones", step=1, key="a3")
                 with s3_c3: precio_s3 = st.number_input("Precio Salida ($)", step=0.5, key="p3")
                 with s3_c4: notas_s3 = st.text_input("Notas Salida 3", key="n3")
@@ -432,7 +432,7 @@ with tab_dash:
             with f_col3:
                 fechas_min = df_cerradas['Fecha_DT'].min().date()
                 fechas_max = df_cerradas['Fecha_DT'].max().date()
-                rango_fechas = st.date_input("Rango de Fechas:", [fechas_min, fechas_max])
+                rango_fechas = st.date_input("Rango de Fechas:", [fechas_min, fechas_max], format="DD/MM/YYYY")
             
             st.write("---")
             
