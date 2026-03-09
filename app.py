@@ -50,6 +50,8 @@ st.sidebar.success(f"🟢 Sesión activa: {usuario_actual}")
 if st.sidebar.button("🚪 Cerrar Sesión"):
     st.session_state['logeado'] = False
     st.rerun()
+if st.sidebar.button("🔄 Actualizar Bóveda"):
+    st.rerun()
 
 st.title(f"📈 TRADING DASHBOARD | {usuario_actual}")
 st.write("---")
@@ -317,7 +319,7 @@ with tab_bitacora:
                     t_compra = st.text_input("Ticker (Ej: TSLA)").upper()
                     a_compra = st.number_input("Cantidad de Acciones", step=1)
                     p_compra = st.number_input("Precio de Compra ($)", min_value=0.01, step=0.01)
-                    n_compra = st.text_input("Notas Iniciales (Ej: Breakout VCP)")
+                    n_compra = st.text_input("Notas Iniciales (Ej: Breakout HTF)")
                     
                     btn_abrir = st.form_submit_button("🛒 Entrar al Mercado")
                     
@@ -328,7 +330,7 @@ with tab_bitacora:
                             fila = [str(f_compra), t_compra, a_compra, p_compra, monto, 0.0, 0.0, 0.0, n_compra, usuario_actual]
                             try:
                                 sheet.append_row(fila)
-                                st.success(f"¡Posición abierta! Presiona **F5** para ver a {t_compra} en tu Portafolio.")
+                                st.success(f"¡Posición abierta! Haz clic en **Actualizar Bóveda** en el menú lateral para ver a {t_compra}.")
                             except Exception as e:
                                 st.error(f"Error: {e}")
                         else:
@@ -403,7 +405,7 @@ with tab_bitacora:
                                     resumen = (
                                         f"¡Salida de **{t_venta}** registrada!\n\n"
                                         f"**Ganancia/Pérdida:** ${formato_es(pl_usd)}\n\n"
-                                        f"Presiona **F5** para actualizar."
+                                        f"Usa el botón **Actualizar Bóveda** para ver los cambios."
                                     )
                                     
                                     # 🚦 SEMÁFORO INTELIGENTE
