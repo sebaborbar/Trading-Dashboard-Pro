@@ -317,7 +317,7 @@ with tab_bitacora:
 
             with col_izq:
                 st.markdown("#### 🚀 Abrir Nueva Operación")
-                st.markdown("Dispara tu entrada al mercado aquí.")
+                st.markdown("Registra tu entrada al mercado aquí.")
                 with st.form("form_abrir_trade", clear_on_submit=True):
                     f_compra = st.date_input("Fecha de Compra", format="DD/MM/YYYY")
                     t_compra = st.text_input("Ticker (Ej: TSLA)").upper()
@@ -423,7 +423,7 @@ with tab_bitacora:
                             else:
                                 st.warning(f"⚠️ Revisa los datos. No puedes vender más de {abs(max_acc)} acciones.")
                 else:
-                    st.success("Tus manos están libres. No tienes operaciones abiertas actualmente. ¡Busca el próximo setup! 🎯")
+                    st.success("No tienes operaciones abiertas actualmente. ¡Busca el próximo setup! 🎯")
 
 # ==========================================
 # PESTAÑA 3: MÉTRICAS (Dashboard Avanzado)
