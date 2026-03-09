@@ -85,18 +85,34 @@ try:
     sheet = client.open("DB_Trading_App").worksheet("journal")
     conexion_exitosa = True
 
-    # FIX CÓNDOR CHILENO: Limpiamos los datos globalmente
+    # FIX CÓNDOR CHILENO: Limpiamos los datos globalmente (Parser LatAm/US)
     filas = sheet.get_all_values()
     if len(filas) > 1:
         df = pd.DataFrame(filas[1:], columns=filas[0])
         df.columns = df.columns.str.strip()
         
+        def parse_money(x):
+            if pd.isna(x): return 0.0
+            x = str(x).replace('$', '').replace('%', '').strip()
+            if not x: return 0.0
+            # Si tiene punto y coma, detectamos cuál es el decimal (el último)
+            if '.' in x and ',' in x:
+                if x.rfind(',') > x.rfind('.'): # LatAm: 1.000,50
+                    x = x.replace('.', '').replace(',', '.')
+                else:                           # US: 1,000.50
+                    x = x.replace(',', '')
+            elif ',' in x: # Solo tiene coma: 15,50
+                x = x.replace(',', '.')
+            # Si solo tiene punto, ya está listo para convertirse a float
+            try:
+                return float(x)
+            except ValueError:
+                return 0.0
+
         cols_numericas = ['Acciones', 'Precio Entrada', 'Precio Salida', 'P/L %', 'P/L $']
         for col in cols_numericas:
             if col in df.columns:
-                df[col] = df[col].astype(str).str.replace('$', '', regex=False).str.replace('%', '', regex=False)
-                df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                df[col] = df[col].apply(parse_money)
     else:
         df = pd.DataFrame()
         
