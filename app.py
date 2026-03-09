@@ -222,12 +222,14 @@ with tab_calc:
 # ==========================================
 with tab_bitacora:
         # 🧠 Selector con Memoria (Soluciona el error de sincronización)
+        if "selector_modo" not in st.session_state:
+            st.session_state["selector_modo"] = "🟢 Gestión en Vivo (Portafolio)"
+
         modo_bitacora = st.radio(
             "🎛️ Selecciona tu modo de trabajo:",
             ["◀️ Registro Histórico", "🟢 Gestión en Vivo (Portafolio)"],
-            index=1,             # 👈 Inicia siempre en Gestión en Vivo por defecto
             horizontal=True,
-            key="selector_modo"  # 👈 Esta 'key' hace que Streamlit recuerde tu posición al actualizar
+            key="selector_modo"
         )
         st.write("---")
 
