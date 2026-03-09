@@ -542,17 +542,19 @@ with tab_dash:
     st.markdown("### ⚙️ Administración de Datos")
     with st.expander("🗑️ Eliminar un registro de la base de datos"):
         st.warning("⚠️ Cuidado: Al eliminar un registro, se borrará definitivamente de la base de datos.")
+        # 1. Leemos la hoja completa de Google Sheets
+        df_eliminar = pd.DataFrame(sheet.get_all_records())
         
         if not df_eliminar.empty:
-            # 🛡️ FILTRO DE SEGURIDAD: Solo ver lo propio
+            # 2. 🛡️ FILTRO DE SEGURIDAD: Solo ver lo propio
             if 'Usuario' in df_eliminar.columns:
                 df_eliminar = df_eliminar[df_eliminar['Usuario'] == usuario_actual]
 
             if not df_eliminar.empty:
-                # La fila 1 son los títulos, la data empieza en la 2
+                # 3. La fila 1 son los títulos, la data empieza en la 2
                 df_eliminar['Fila_Excel'] = df_eliminar.index + 2
                 
-                # SOLUCIÓN BLINDADA: Columnas por orden
+                # Columnas por orden para crear la etiqueta del selector
                 col_1 = df_eliminar.columns[0] # Fecha
                 col_2 = df_eliminar.columns[1] # Ticker
                 col_3 = df_eliminar.columns[2] # Acciones
