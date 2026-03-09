@@ -221,11 +221,13 @@ with tab_calc:
 # PESTAÑA 2: BITÁCORA (Nueva Arquitectura)
 # ==========================================
 with tab_bitacora:
-        # El Selector Mágico (Orden corregido y texto limpio)
+        # 🧠 Selector con Memoria (Soluciona el error de sincronización)
         modo_bitacora = st.radio(
             "🎛️ Selecciona tu modo de trabajo:",
             ["◀️ Registro Histórico", "🟢 Gestión en Vivo (Portafolio)"],
-            horizontal=True
+            index=1,             # 👈 Inicia siempre en Gestión en Vivo por defecto
+            horizontal=True,
+            key="selector_modo"  # 👈 Esta 'key' hace que Streamlit recuerde tu posición al actualizar
         )
         st.write("---")
 
