@@ -29,8 +29,9 @@ if not st.session_state['logeado']:
                 usuarios_autorizados = {
                     "Sebastian": "Traders2026*",
                     "Juan Perez": "Swing2026*",
-                    "Cristian": "Breakout2026*",
-                    "MariaTrader": "Breakout123"
+                    "Cristian Param": "Breakout2026*",
+                    "Martin Aldunate": "Breakout1198*",
+                    "Francisco Guzman": "Breakout1122*"
                 }
                 
                 if usuario in usuarios_autorizados and usuarios_autorizados[usuario] == password:
