@@ -344,9 +344,12 @@ with tab_bitacora:
 
             with col_der:
                 st.markdown("#### 💼 Portafolio Activo")
+                
+                # 🛡️ SOLUCIÓN: Creamos el diccionario vacío AFUERA del if
+                portafolio = {} 
+                
                 if conexion_exitosa and not df.empty:
                     # 🧠 EL CEREBRO BASADO EN TENENCIA NETA
-                    portafolio = {}
                     for t in df['Ticker'].unique():
                         df_t = df[df['Ticker'] == t]
                         
