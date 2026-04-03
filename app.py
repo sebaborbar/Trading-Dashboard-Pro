@@ -388,12 +388,18 @@ with tab_bitacora:
                     df_portafolio = pd.DataFrame.from_dict(portafolio, orient='index').reset_index()
                     df_portafolio.rename(columns={'index': 'Ticker'}, inplace=True)
                     
-                    # Mostrar la tabla en la interfaz (escondiendo el índice)
+                    # 💰 1. Calcular el Capital Total Expuesto primero (usando la matemática pura)
+                    capital_total = df_portafolio['Monto ($)'].sum()
+                    
+                    # 🌍 2. Convertir los números de la tabla al formato castellano usando tu función
+                    df_portafolio['Precio Promedio'] = [formato_es(x) for x in df_portafolio['Precio Promedio']]
+                    df_portafolio['Monto ($)'] = [formato_es(x) for x in df_portafolio['Monto ($)']]
+                    
+                    # 3. Mostrar la tabla en la interfaz (escondiendo el índice)
                     st.dataframe(df_portafolio, hide_index=True, use_container_width=True)
                     
-                    # 💰 NUEVO: Calcular y mostrar el Capital Total Expuesto
-                    capital_total = df_portafolio['Monto ($)'].sum()
-                    st.info(f"💰 **Capital Total Expuesto:** ${capital_total:,.2f}")
+                    # 4. Mostrar la caja azul con el total formateado en castellano
+                    st.info(f"💰 **Capital Total Expuesto:** ${formato_es(capital_total)}")
                     
                     st.markdown("#### 🎯 Registrar Salida")
                     with st.form("form_cerrar_trade", clear_on_submit=True):
