@@ -358,10 +358,10 @@ with tab_bitacora:
                         salidas = df_t[df_t['P/L $'] != 0]['Acciones'].abs().sum() # abs() previene errores de signos
                         
                         # 2. Calculamos la tenencia real (lo que posees o debes)
-                        if entradas > 0: 
+                        if entradas > 0:
                             # LONG: Compraste, por ende restas las ventas
                             tenencia_neta = entradas - salidas
-                        elif entradas < 0: 
+                        elif entradas < 0:
                             # SHORT: Vendiste en corto, por ende sumas las recompras
                             tenencia_neta = entradas + salidas
                         else:
@@ -372,15 +372,28 @@ with tab_bitacora:
                         if tenencia_neta != 0:
                             # Calculamos el precio promedio protegiéndonos de errores "None"
                             df_entradas = df_t[df_t['P/L $'] == 0]
-                            precio_promedio = (df_entradas['Acciones'].abs() * df_entradas['Precio Entrada']).sum() / df_entradas['Acciones'].abs().sum() if not df_entradas.empty else 0.0
+                            precio_promedio = (df_entradas['Acciones'].abs() * df_entradas['Precio Entrada']).sum() / df_entradas['Acciones'].abs().sum()
                             
-                            portafolio[t] = {'Acciones': tenencia_neta, 'Precio Promedio': precio_promedio}
-                
+                            # Calculamos el monto expuesto
+                            monto_expuesto = abs(tenencia_neta) * precio_promedio
+                            
+                            portafolio[t] = {
+                                'Acciones': tenencia_neta, 
+                                'Precio Promedio': round(precio_promedio, 2),
+                                'Monto ($)': round(monto_expuesto, 2)
+                            }
+                            
                 if portafolio:
                     # Convertir a DataFrame para mostrar
                     df_portafolio = pd.DataFrame.from_dict(portafolio, orient='index').reset_index()
                     df_portafolio.rename(columns={'index': 'Ticker'}, inplace=True)
-                    st.dataframe(df_portafolio, use_container_width=True)
+                    
+                    # Mostrar la tabla en la interfaz (escondiendo el índice)
+                    st.dataframe(df_portafolio, hide_index=True, use_container_width=True)
+                    
+                    # 💰 NUEVO: Calcular y mostrar el Capital Total Expuesto
+                    capital_total = df_portafolio['Monto ($)'].sum()
+                    st.info(f"💰 **Capital Total Expuesto:** ${capital_total:,.2f}")
                     
                     st.markdown("#### 🎯 Registrar Salida")
                     with st.form("form_cerrar_trade", clear_on_submit=True):
@@ -390,7 +403,7 @@ with tab_bitacora:
                         p_venta = st.number_input("Precio de Salida ($)", min_value=0.01, step=0.01)
                         n_venta = st.text_input("Notas de Salida")
                         
-                        btn_cerrar = st.form_submit_button("💰 Registrar Salida")
+                        btn_cerrar = st.form_submit_button("🎯 Registrar Salida")
                         
                         if btn_cerrar:
                             max_acc = portafolio[t_venta]['Acciones']
@@ -404,13 +417,13 @@ with tab_bitacora:
                                     pl_pct = ((p_venta - p_promedio) / p_promedio) * 100
                                 else: # SHORT
                                     pl_usd = (p_promedio - p_venta) * abs(a_venta)
-                                    pl_pct = ((p_promedio - p_venta) / p_promedio) * 100
+                                    pl_pct = ((p_promedio - p_venta) / p_venta) * 100
                                     
                                 fila_salida = [str(f_venta), t_venta, a_venta, p_promedio, monto_venta, p_venta, round(pl_pct, 2), round(pl_usd, 2), n_venta, usuario_actual]
                                 try:
                                     sheet.append_row(fila_salida)
                                     
-                                    # 📊 CREAMOS EL MENSAJE MULTILÍNEA PROFESIONAL
+                                    # 📝 CREAMOS EL MENSAJE MULTILÍNEA PROFESIONAL
                                     resumen = (
                                         f"¡Salida de **{t_venta}** registrada!\n\n"
                                         f"**Ganancia/Pérdida:** ${formato_es(pl_usd)}\n\n"
