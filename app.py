@@ -27,7 +27,7 @@ if not st.session_state['logeado']:
             if submit:
                 # 📝 DICCIONARIO DE ALUMNOS (Usuario : Contraseña)
                 usuarios_autorizados = {
-                    "Sebastian": "Traders2026*",
+                    "Sebastian": "Sebas2026*",
                     "Juan Perez": "Swing2026*",
                     "Cristian Param": "Breakout2026*",
                     "Martin Aldunate": "Breakout1198*",
