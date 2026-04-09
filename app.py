@@ -32,6 +32,8 @@ if not st.session_state['logeado']:
                     "Cristian Param": "Breakout2026*",
                     "Martin Aldunate": "Breakout1198*",
                     "Francisco Guzman": "Breakout1122*",
+                    "Camelia Parra": "Breakout-2026",
+                    "Cesar Bigorra": "Breakout*2026",
                     "Julio Silva": "Breakout1144*"
                 }
                 
