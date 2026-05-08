@@ -60,19 +60,16 @@ def formato_entero(num):
 
 # --- 2. CONEXIÓN A GOOGLE SHEETS ---
 try:
+    import json
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-    
-    import os
-    
-    with open("temp_credenciales.json", "w") as f:
-        f.write(st.secrets["google_json"])
-        
-    creds = Credentials.from_service_account_file("temp_credenciales.json", scopes=scopes)
-    os.remove("temp_credenciales.json")
-    
+
+    # ✅ SEGURO: Cargamos desde memoria, sin crear ningún archivo
+    info_cuenta = json.loads(st.secrets["google_json"])
+    creds = Credentials.from_service_account_info(info_cuenta, scopes=scopes)
+
     client = gspread.authorize(creds)
     sheet = client.open("DB_Trading_App").worksheet("journal")
     conexion_exitosa = True
@@ -104,7 +101,7 @@ try:
                 df[col] = df[col].apply(parse_money)
     else:
         df = pd.DataFrame()
-        
+
 except Exception as e:
     conexion_exitosa = False
     df = pd.DataFrame()
