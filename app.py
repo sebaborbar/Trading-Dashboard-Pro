@@ -358,10 +358,17 @@ with tab_bitacora:
             st.markdown("#### 🚀 Abrir Nueva Operación")
             st.markdown("Registra tu entrada al mercado aquí.")
             with st.form("form_abrir_trade", clear_on_submit=True):
+                
+                # ✅ PRE-LLENADO: Leer datos enviados desde la Calculadora
+                prefill = st.session_state.get('prefill_bitacora') or {}
+                ticker_default  = prefill.get('ticker', '')
+                acciones_default = int(prefill.get('acciones', 0))
+                precio_default  = float(prefill.get('precio', 0.01))
+                
                 f_compra = st.date_input("Fecha de Compra", format="DD/MM/YYYY")
-                t_compra = st.text_input("Ticker (Ej: TSLA)").upper()
-                a_compra = st.number_input("Cantidad de Acciones", step=1)
-                p_compra = st.number_input("Precio de Compra ($)", min_value=0.01, step=0.01)
+                t_compra = st.text_input("Ticker (Ej: TSLA)", value=ticker_default).upper()
+                a_compra = st.number_input("Cantidad de Acciones", step=1, value=acciones_default)
+                p_compra = st.number_input("Precio de Compra ($)", min_value=0.01, step=0.01, value=precio_default)
                 n_compra = st.text_input("Notas Iniciales (Ej: Entrada Power Kick)")
                 
                 btn_abrir = st.form_submit_button("🛒 Entrar al Mercado")
@@ -372,6 +379,7 @@ with tab_bitacora:
                         fila = [str(f_compra), t_compra, a_compra, p_compra, monto, 0.0, 0.0, 0.0, n_compra, usuario_actual]
                         try:
                             sheet.append_row(fila)
+                            st.session_state['prefill_bitacora'] = None
                             st.success(f"¡Posición abierta! Haz clic en **Actualizar Bóveda** para ver a {t_compra}.")
                         except Exception as e:
                             st.error(f"Error: {e}")
