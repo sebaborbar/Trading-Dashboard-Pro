@@ -534,11 +534,11 @@ with tab_dash:
                 pl_neto_anual = df_anual['P/L $'].sum()
                 rentabilidad_anual = (pl_neto_anual / capital_inicial) * 100
 
-                # ✅ NUEVO: Expectativa Matemática (Edge)
+                # ✅ Expectativa Matemática (Edge)
                 loss_rate = 100 - win_rate
                 edge = ((win_rate / 100) * avg_win) - ((loss_rate / 100) * avg_loss)
 
-                # ✅ NUEVO: Sharpe Ratio (simplificado, sin tasa libre de riesgo)
+                # ✅ Sharpe Ratio
                 df_diario_sharpe = df_filtrado.groupby('Fecha_DT')['P/L $'].sum()
                 if len(df_diario_sharpe) > 1:
                     retorno_medio = df_diario_sharpe.mean()
@@ -547,7 +547,7 @@ with tab_dash:
                 else:
                     sharpe = 0
 
-                # ✅ NUEVO: Maximum Drawdown
+                # ✅ Maximum Drawdown
                 df_diario_dd = df_filtrado.groupby('Fecha_DT', as_index=False)['P/L $'].sum()
                 df_diario_dd = df_diario_dd.sort_values('Fecha_DT')
                 df_diario_dd['Balance'] = capital_inicial + df_diario_dd['P/L $'].cumsum()
@@ -557,7 +557,7 @@ with tab_dash:
                 max_drawdown_pct = df_diario_dd['Drawdown_%'].min()
                 max_drawdown_usd = df_diario_dd['Drawdown_$'].min()
 
-                # ✅ NUEVO: Racha Actual
+                # ✅ Racha Actual
                 pl_lista = df_operaciones.sort_values('Fecha_DT')['PL_Total'].tolist()
                 racha = 0
                 if pl_lista:
@@ -569,18 +569,19 @@ with tab_dash:
                             break
                 racha_texto = f"🟢 {racha} ganadoras" if ultimo == 1 else f"🔴 {racha} perdedoras"
 
-                # --- MOSTRAR KPIs FILA 1: Capital ---
-                st.markdown("#### Métricas Clave")
-
+                # --- FORMATEO ---
                 win_rate_str = f"{win_rate:.1f}".replace(".", ",")
                 pf_str = formato_es(profit_factor)
                 rent_hist_str = f"{rentabilidad_historica:.2f}".replace(".", ",")
                 rent_anual_str = f"{rentabilidad_anual:.2f}".replace(".", ",")
-                edge_str = f"${formato_es(edge)}"
                 sharpe_str = f"{sharpe:.2f}".replace(".", ",")
                 dd_pct_str = f"{max_drawdown_pct:.2f}".replace(".", ",")
                 dd_usd_str = formato_es(abs(max_drawdown_usd))
 
+                # --- MÉTRICAS CLAVE ---
+                st.markdown("#### Métricas Clave")
+
+                # Fila 1: Capital
                 r1, r2, r3, r4 = st.columns(4)
                 r1.metric("Capital Inicial", f"${formato_es(capital_inicial)}")
                 r2.metric("Capital Final", f"${formato_es(capital_final)}")
@@ -589,7 +590,7 @@ with tab_dash:
 
                 st.write("")
 
-                # --- FILA 2: KPIs de Trading ---
+                # Fila 2: KPIs de Trading
                 k1, k2, k3, k4 = st.columns(4)
                 k1.metric("Win Rate", f"{win_rate_str}%")
                 k2.metric("Profit Factor", pf_str)
@@ -598,14 +599,15 @@ with tab_dash:
 
                 st.write("")
 
-                # --- FILA 3: Métricas Avanzadas ---
+                # Fila 3: Métricas Avanzadas
                 m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Expectativa (Edge)", edge_str)
+                m1.metric("Expectativa (Edge)", f"${formato_es(edge)}")
                 m2.metric("Sharpe Ratio", sharpe_str)
-                m3.metric("Max Drawdown", f"{dd_pct_str}%", delta=f"-${dd_usd_str}", delta_color="inverse")
+                # ✅ delta en gris — neutro, sin alarmar
+                m3.metric("Max Drawdown", f"{dd_pct_str}%", delta=f"-${dd_usd_str}", delta_color="off")
                 m4.metric("Racha Actual", racha_texto)
 
-                # ✅ ALERTA DRAWDOWN 10%
+                # ✅ Alerta de Drawdown al -10%
                 if max_drawdown_pct <= -10:
                     st.error(
                         f"🚨 **ALERTA DE DRAWDOWN:** Tu drawdown máximo es de **{dd_pct_str}%** "
@@ -640,44 +642,6 @@ with tab_dash:
                 ).properties(height=350).interactive()
 
                 st.altair_chart(chart_equidad, use_container_width=True)
-
-                st.write("---")
-
-                # ✅ NUEVO: CURVA DE DRAWDOWN
-                st.markdown("#### 📉 Curva de Drawdown")
-
-                # Línea de drawdown
-                chart_dd = alt.Chart(df_diario_dd).mark_area(
-                    color='#ff4444',
-                    opacity=0.4,
-                    line={'color': '#ff4444', 'strokeWidth': 2}
-                ).encode(
-                    x=alt.X('Fecha_DT:T',
-                            title='',
-                            axis=alt.Axis(format='%d-%m-%Y', labelAngle=-45, tickCount='month', grid=True)),
-                    y=alt.Y('Drawdown_%:Q',
-                            title='Drawdown (%)',
-                            scale=alt.Scale(zero=False)),
-                    tooltip=[
-                        alt.Tooltip('Fecha_DT:T', title='Fecha', format='%d-%m-%Y'),
-                        alt.Tooltip('Drawdown_%:Q', title='Drawdown %', format='.2f'),
-                        alt.Tooltip('Drawdown_$:Q', title='Drawdown $', format='$,.2f')
-                    ]
-                ).properties(height=250).interactive()
-
-                # Línea de alerta al -10%
-                linea_alerta = alt.Chart(
-                    pd.DataFrame({'y': [-10]})
-                ).mark_rule(
-                    color='#ff9900',
-                    strokeWidth=2,
-                    strokeDash=[6, 3]
-                ).encode(
-                    y=alt.Y('y:Q')
-                )
-
-                st.altair_chart((chart_dd + linea_alerta), use_container_width=True)
-                st.caption("🟠 La línea naranja indica el umbral de alerta de drawdown (-10%)")
 
                 st.write("---")
 
