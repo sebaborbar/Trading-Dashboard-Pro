@@ -115,17 +115,17 @@ if 'Usuario' in df.columns:
 tab_calc, tab_bitacora, tab_dash = st.tabs(["🧮 Calculadora de Riesgo", "📝 Bitácora", "📊 Métricas de Rendimiento"])
 
 # ==========================================
-# PESTAÑA 1: CALCULADORA DE RIESGO
+# INICIALIZACIÓN DE SESSION STATE
 # ==========================================
-
-# ✅ MEJORA #3: Inicializar el registro de cálculos en session_state
 if 'registro_calculos' not in st.session_state:
     st.session_state['registro_calculos'] = []
 
-# ✅ MEJORA #4: Inicializar los datos para pre-llenar la bitácora
 if 'prefill_bitacora' not in st.session_state:
     st.session_state['prefill_bitacora'] = None
 
+# ==========================================
+# PESTAÑA 1: CALCULADORA DE RIESGO
+# ==========================================
 with tab_calc:
     st.subheader("⚙️ Configuración del Trade")
     
@@ -150,7 +150,7 @@ with tab_calc:
         else:
             extremo = st.number_input("Precio Último Máximo ($)", min_value=0.0, value=54.0, step=0.5)
 
-    # ✅ MEJORA #1: R/R Ratio variable
+    # ✅ R/R Ratio variable
     st.markdown("**3. Objetivo de Ganancia**")
     rr_ratio = st.select_slider(
         "Ratio Riesgo/Recompensa:",
@@ -188,24 +188,6 @@ with tab_calc:
             acciones_a_comprar = math.floor(riesgo_usd / riesgo_por_accion)
             monto_exposicion = acciones_a_comprar * entrada
             acciones_vender_tp = math.ceil(acciones_a_comprar / 2)
-
-            # ✅ MEJORA #2: Tabla de escenarios con R/R variable
-            if "ALZA" in direccion:
-                escenarios = {
-                    "1,5:1 🥉": entrada + (riesgo_por_accion * 1.5),
-                    "2:1 🥈": entrada + (riesgo_por_accion * 2.0),
-                    "2,5:1 🏅": entrada + (riesgo_por_accion * 2.5),
-                    "3:1 🥇": entrada + (riesgo_por_accion * 3.0),
-                }
-            else:
-                escenarios = {
-                    "1,5:1 🥉": entrada - (riesgo_por_accion * 1.5),
-                    "2:1 🥈": entrada - (riesgo_por_accion * 2.0),
-                    "2,5:1 🏅": entrada - (riesgo_por_accion * 2.5),
-                    "3:1 🥇": entrada - (riesgo_por_accion * 3.0),
-                }
-
-            # Take profit según el ratio elegido en el slider
             take_profit = entrada + (riesgo_por_accion * rr_ratio) if "ALZA" in direccion else entrada - (riesgo_por_accion * rr_ratio)
 
             acc_str = formato_entero(acciones_a_comprar)
@@ -226,25 +208,9 @@ with tab_calc:
                 f"Al llegar a tu objetivo, debes **{texto_salida} {acc_tp_str} acciones** para asegurar tu ganancia."
             )
 
-            # ✅ MEJORA #2: Tabla de escenarios
-            st.markdown("#### 📊 Tabla de Escenarios")
-            filas_escenarios = []
-            for label, precio_tp in escenarios.items():
-                pl_parcial = (abs(precio_tp - entrada) * acciones_vender_tp) if "ALZA" in direccion else (abs(entrada - precio_tp) * acciones_vender_tp)
-                pl_total = (abs(precio_tp - entrada) * acciones_a_comprar) if "ALZA" in direccion else (abs(entrada - precio_tp) * acciones_a_comprar)
-                filas_escenarios.append({
-                    "Escenario": label,
-                    "Precio TP": f"${formato_es(precio_tp)}",
-                    f"P/L 50% ({acc_tp_str} acc)": f"${formato_es(pl_parcial)}",
-                    f"P/L 100% ({acc_str} acc)": f"${formato_es(pl_total)}"
-                })
-            
-            df_escenarios = pd.DataFrame(filas_escenarios)
-            st.dataframe(df_escenarios, hide_index=True, use_container_width=True)
-
             st.write("---")
 
-            # ✅ MEJORAS #3 y #4: Botones de guardar y enviar a bitácora
+            # ✅ Botones Guardar y Enviar a Bitácora
             col_btn1, col_btn2 = st.columns(2)
 
             with col_btn1:
@@ -278,18 +244,19 @@ with tab_calc:
         else:
             st.error("🚨 Datos inválidos: Para ALZA, el Mínimo debe ser menor al Breakout. Para BAJA, el Máximo debe ser mayor al Breakout.")
 
-    # ✅ MEJORA #3: Registro del Día
+    # ✅ Registro del Día
     st.write("---")
     st.markdown("#### 🗂️ Registro del Día")
 
     if st.session_state['registro_calculos']:
         for i, calc in enumerate(st.session_state['registro_calculos']):
             with st.expander(f"#{i+1} — {calc['ticker']} | {calc['direccion']} | Entrada: ${formato_es(calc['entrada'])} | TP {calc['rr']}:1"):
-                r1, r2, r3, r4 = st.columns(4)
+                r1, r2, r3, r4, r5 = st.columns(5)
                 r1.metric("Acciones", formato_entero(calc['acciones']))
-                r2.metric("Stop Loss", f"${formato_es(calc['sl'])}")
-                r3.metric("Take Profit", f"${formato_es(calc['tp'])}")
-                r4.metric("Exposición", f"${formato_es(calc['exposicion'])}")
+                r2.metric("Entrada", f"${formato_es(calc['entrada'])}")
+                r3.metric("Stop Loss", f"${formato_es(calc['sl'])}")
+                r4.metric("Take Profit", f"${formato_es(calc['tp'])}")
+                r5.metric("Exposición", f"${formato_es(calc['exposicion'])}")
                 if st.button(f"🗑️ Borrar #{i+1}", key=f"borrar_{i}"):
                     st.session_state['registro_calculos'].pop(i)
                     st.rerun()
