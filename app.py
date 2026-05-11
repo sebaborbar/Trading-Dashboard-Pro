@@ -584,9 +584,7 @@ with tab_dash:
                 # Fila 1: Capital
                 r1, r2, r3, r4 = st.columns(4)
                 r1.metric("Capital Final", f"${formato_es(capital_final)}")
-                r2.metric("P/L Neto", f"${formato_es(pl_neto)}", 
-                            delta=f"{rent_hist_str}%", 
-                            delta_color="normal")
+                r2.metric("P/L Neto", f"${formato_es(pl_neto)}")
                 r3.metric("Rentabilidad Histórica", f"{rent_hist_str}%")
                 r4.metric(f"Rentabilidad Anual ({año_actual})", f"{rent_anual_str}%")
 
