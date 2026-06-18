@@ -4,14 +4,15 @@ import gspread
 from google.oauth2.service_account import Credentials
 import math
 import altair as alt
-
+from io import StringIO
+ 
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Trading Dashboard", layout="wide", page_icon="📈")
-
+ 
 # --- 🔒 SISTEMA DE LOGIN MULTIUSUARIO ---
 if 'logeado' not in st.session_state:
     st.session_state['logeado'] = False
-
+ 
 if not st.session_state['logeado']:
     st.markdown("<h1 style='text-align: center;'>🔒 Acceso al Trading Dashboard</h1>", unsafe_allow_html=True)
     st.write("---")
@@ -25,7 +26,6 @@ if not st.session_state['logeado']:
             submit = st.form_submit_button("Ingresar 🚀")
             
             if submit:
-                # ✅ MEJORA #4: Contraseñas movidas a st.secrets (secrets.toml)
                 usuarios_autorizados = dict(st.secrets["usuarios"])
                 
                 if usuario in usuarios_autorizados and usuarios_autorizados[usuario] == password:
@@ -36,10 +36,10 @@ if not st.session_state['logeado']:
                     st.error("⚠️ Usuario o contraseña incorrectos.")
                     
     st.stop()
-
+ 
 # --- SI EL LOGIN ES EXITOSO, LA APP CONTINÚA AQUÍ ---
 usuario_actual = st.session_state['usuario_actual']
-
+ 
 st.sidebar.title("👤 Perfil")
 st.sidebar.success(f"🟢 Sesión activa: {usuario_actual}")
 if st.sidebar.button("🚪 Cerrar Sesión"):
@@ -47,17 +47,17 @@ if st.sidebar.button("🚪 Cerrar Sesión"):
     st.rerun()
 if st.sidebar.button("🔄 Actualizar Bóveda"):
     st.rerun()
-
+ 
 st.title(f"📈 TRADING DASHBOARD | {usuario_actual}")
 st.write("---")
-
+ 
 # --- FUNCIONES AUXILIARES ---
 def formato_es(num):
     return f"{num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
+ 
 def formato_entero(num):
     return f"{num:,}".replace(",", ".")
-
+ 
 # --- 2. CONEXIÓN A GOOGLE SHEETS ---
 try:
     import json
@@ -65,15 +65,14 @@ try:
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-
-    # ✅ SEGURO: Cargamos desde memoria, sin crear ningún archivo
+ 
     info_cuenta = json.loads(st.secrets["google_json"])
     creds = Credentials.from_service_account_info(info_cuenta, scopes=scopes)
-
+ 
     client = gspread.authorize(creds)
     sheet = client.open("DB_Trading_App").worksheet("journal")
     conexion_exitosa = True
-
+ 
     filas = sheet.get_all_values()
     if len(filas) > 1:
         df = pd.DataFrame(filas[1:], columns=filas[0])
@@ -94,35 +93,39 @@ try:
                 return float(x)
             except ValueError:
                 return 0.0
-
+ 
         cols_numericas = ['Acciones', 'Precio Entrada', 'Precio Salida', 'P/L %', 'P/L $']
         for col in cols_numericas:
             if col in df.columns:
                 df[col] = df[col].apply(parse_money)
     else:
         df = pd.DataFrame()
-
+ 
 except Exception as e:
     conexion_exitosa = False
     df = pd.DataFrame()
     st.sidebar.error(f"Error de base de datos: {e}")
-
+ 
 # 🔒 GUARDIÁN DE PRIVACIDAD
 if 'Usuario' in df.columns:
     df = df[df['Usuario'] == usuario_actual]
-
+ 
 # --- 3. MENÚ DE NAVEGACIÓN ---
-tab_calc, tab_bitacora, tab_dash = st.tabs(["🧮 Calculadora de Riesgo", "📝 Bitácora", "📊 Métricas de Rendimiento"])
-
+tab_calc, tab_bitacora, tab_dash = st.tabs([
+    "🧮 Calculadora de Riesgo",
+    "📝 Bitácora",
+    "📊 Métricas de Rendimiento"
+])
+ 
 # ==========================================
 # INICIALIZACIÓN DE SESSION STATE
 # ==========================================
 if 'registro_calculos' not in st.session_state:
     st.session_state['registro_calculos'] = []
-
+ 
 if 'prefill_bitacora' not in st.session_state:
     st.session_state['prefill_bitacora'] = None
-
+ 
 # ==========================================
 # PESTAÑA 1: CALCULADORA DE RIESGO
 # ==========================================
@@ -130,7 +133,7 @@ with tab_calc:
     st.subheader("⚙️ Configuración del Trade")
     
     direccion = st.radio("Dirección del Trade:", ["ALZA 🟢 (Long)", "BAJA 🔴 (Short)"], horizontal=True)
-
+ 
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**1. Datos del Capital**")
@@ -138,7 +141,7 @@ with tab_calc:
         riesgo_pct = st.number_input("Riesgo (%)", min_value=0.1, value=0.50, step=0.1)
         riesgo_usd = capital * (riesgo_pct / 100)
         st.info(f"**Riesgo en dinero:** ${formato_es(riesgo_usd)}")
-
+ 
     with col2:
         st.markdown("**2. Datos del Gráfico**")
         ticker = st.text_input("TICKER", value="AAAA").upper()
@@ -149,8 +152,7 @@ with tab_calc:
             extremo = st.number_input("Precio Último Mínimo ($)", min_value=0.0, value=46.0, step=0.5)
         else:
             extremo = st.number_input("Precio Último Máximo ($)", min_value=0.0, value=54.0, step=0.5)
-
-    # ✅ R/R Ratio variable
+ 
     st.markdown("**3. Objetivo de Ganancia**")
     rr_ratio = st.select_slider(
         "Ratio Riesgo/Recompensa:",
@@ -158,7 +160,7 @@ with tab_calc:
         value=2.0,
         format_func=lambda x: f"{x}:1"
     )
-
+ 
     st.write("---")
     
     if breakout > 0 and extremo > 0:
@@ -174,7 +176,7 @@ with tab_calc:
             sl_atr = breakout + atr
             sl_definitivo = max(sl_extremo, sl_atr)
             condicion_valida = sl_definitivo > entrada and entrada > 0
-
+ 
         if condicion_valida:
             if "ALZA" in direccion:
                 riesgo_por_accion = entrada - sl_definitivo
@@ -184,35 +186,33 @@ with tab_calc:
                 riesgo_por_accion = sl_definitivo - entrada
                 texto_accion = "VENDER EN CORTO"
                 texto_salida = "COMPRAR PARA CUBRIR"
-
+ 
             acciones_a_comprar = math.floor(riesgo_usd / riesgo_por_accion)
             monto_exposicion = acciones_a_comprar * entrada
             acciones_vender_tp = math.ceil(acciones_a_comprar / 2)
             take_profit = entrada + (riesgo_por_accion * rr_ratio) if "ALZA" in direccion else entrada - (riesgo_por_accion * rr_ratio)
-
+ 
             acc_str = formato_entero(acciones_a_comprar)
             acc_tp_str = formato_entero(acciones_vender_tp)
-
-            # --- PLAN DE ACCIÓN ---
+ 
             st.subheader("Plan de Acción")
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Acciones", acc_str)
             c2.metric("Entrada", f"${formato_es(entrada)}")
             c3.metric("Stop Loss", f"${formato_es(sl_definitivo)}")
             c4.metric(f"Take Profit ({rr_ratio}:1)", f"${formato_es(take_profit)}")
-
+ 
             st.warning(
                 f"**💡 Resumen de Ejecución:**\n\n"
                 f"Debes **{texto_accion} {acc_str} acciones** de **{ticker}** a **${formato_es(entrada)}**.\n\n"
                 f"Tu exposición total será de **${formato_es(monto_exposicion)}**.\n\n"
                 f"Al llegar a tu objetivo, debes **{texto_salida} {acc_tp_str} acciones** para asegurar tu ganancia."
             )
-
+ 
             st.write("---")
-
-            # ✅ Botones Guardar y Enviar a Bitácora
+ 
             col_btn1, col_btn2 = st.columns(2)
-
+ 
             with col_btn1:
                 if st.button("💾 Guardar en Registro del Día"):
                     if len(st.session_state['registro_calculos']) >= 4:
@@ -230,7 +230,7 @@ with tab_calc:
                         }
                         st.session_state['registro_calculos'].append(nuevo_calculo)
                         st.success(f"✅ {ticker} guardado en el registro del día.")
-
+ 
             with col_btn2:
                 if st.button("📋 Enviar a Bitácora"):
                     st.session_state['prefill_bitacora'] = {
@@ -240,14 +240,13 @@ with tab_calc:
                     }
                     st.session_state["selector_modo"] = "🟢 Gestión en Vivo (Portafolio)"
                     st.success("✅ Datos enviados. Ve a la pestaña **Bitácora** para confirmar la entrada.")
-
+ 
         else:
             st.error("🚨 Datos inválidos: Para ALZA, el Mínimo debe ser menor al Breakout. Para BAJA, el Máximo debe ser mayor al Breakout.")
-
-    # ✅ Registro del Día
+ 
     st.write("---")
     st.markdown("#### 🗂️ Registro del Día")
-
+ 
     if st.session_state['registro_calculos']:
         for i, calc in enumerate(st.session_state['registro_calculos']):
             with st.expander(f"#{i+1} — {calc['ticker']} | {calc['direccion']} | Entrada: ${formato_es(calc['entrada'])} | TP {calc['rr']}:1"):
@@ -262,26 +261,29 @@ with tab_calc:
                     st.rerun()
     else:
         st.info("No hay cálculos guardados hoy. Usa el botón **💾 Guardar en Registro del Día** para añadir hasta 4 planes de trading.")
-
+ 
 # ==========================================
 # PESTAÑA 2: BITÁCORA
 # ==========================================
 with tab_bitacora:
     if "selector_modo" not in st.session_state:
         st.session_state["selector_modo"] = "🟢 Gestión en Vivo (Portafolio)"
-
+ 
     modo_bitacora = st.radio(
         "🎛️ Selecciona tu modo de trabajo:",
-        ["◀️ Registro Histórico", "🟢 Gestión en Vivo (Portafolio)"],
+        ["◀️ Registro Histórico", "🟢 Gestión en Vivo (Portafolio)", "📥 Importar desde IBKR"],
         horizontal=True,
         key="selector_modo"
     )
     st.write("---")
-
+ 
+    # ------------------------------------------
+    # MODO 1: REGISTRO HISTÓRICO
+    # ------------------------------------------
     if modo_bitacora == "◀️ Registro Histórico":
         st.subheader("📄 Registro Histórico")
         st.markdown("Ideal para subir trades antiguos.")
-
+ 
         with st.form("form_trade_avanzado", clear_on_submit=True):
             st.markdown("#### 1. Datos de Entrada")
             col1, col2, col3, col4 = st.columns(4)
@@ -289,32 +291,32 @@ with tab_bitacora:
             with col2: ticker_form = st.text_input("Ticker (Ej: NVDA)").upper()
             with col3: acciones_totales = st.number_input("Total Acciones", step=1)
             with col4: precio_entrada_form = st.number_input("Precio Entrada ($)", step=0.50)
-
+ 
             notas_entrada = st.text_input("Notas de Entrada")
             st.markdown("---")
-
+ 
             st.markdown("#### 2. Salidas Parciales")
             s1_c1, s1_c2, s1_c3, s1_c4 = st.columns(4)
             with s1_c1: fecha_s1 = st.date_input("Fecha Salida 1", key="f1", format="DD/MM/YYYY")
             with s1_c2: acc_s1 = st.number_input("Cantidad de Acciones", step=1, key="a1")
             with s1_c3: precio_s1 = st.number_input("Precio Salida ($)", step=0.5, key="p1")
             with s1_c4: notas_s1 = st.text_input("Notas Salida 1", key="n1")
-
+ 
             s2_c1, s2_c2, s2_c3, s2_c4 = st.columns(4)
             with s2_c1: fecha_s2 = st.date_input("Fecha Salida 2", key="f2", format="DD/MM/YYYY")
             with s2_c2: acc_s2 = st.number_input("Cantidad de Acciones", step=1, key="a2")
             with s2_c3: precio_s2 = st.number_input("Precio Salida ($)", step=0.5, key="p2")
             with s2_c4: notas_s2 = st.text_input("Notas Salida 2", key="n2")
-
+ 
             s3_c1, s3_c2, s3_c3, s3_c4 = st.columns(4)
             with s3_c1: fecha_s3 = st.date_input("Fecha Salida 3", key="f3", format="DD/MM/YYYY")
             with s3_c2: acc_s3 = st.number_input("Cantidad de Acciones", step=1, key="a3")
             with s3_c3: precio_s3 = st.number_input("Precio Salida ($)", step=0.5, key="p3")
             with s3_c4: notas_s3 = st.text_input("Notas Salida 3", key="n3")
-
+ 
             st.write("---")
             submit_button = st.form_submit_button("💾 Guardar Historial en Base de Datos")
-
+ 
         if submit_button:
             if ticker_form == "" or precio_entrada_form <= 0 or acciones_totales == 0:
                 st.warning("⚠️ Ingresa un Ticker, acciones (no puede ser cero) y precio válidos.")
@@ -324,7 +326,7 @@ with tab_bitacora:
                 filas_a_guardar = []
                 monto_entrada = acciones_totales * precio_entrada_form
                 filas_a_guardar.append([str(fecha_entrada), ticker_form, acciones_totales, precio_entrada_form, monto_entrada, 0.0, 0.0, 0.0, notas_entrada, usuario_actual])
-
+ 
                 def procesar_salida(f_fecha, f_acc, f_precio, f_notas):
                     if abs(f_acc) > 0 and f_precio > 0:
                         monto_salida = abs(f_acc) * f_precio
@@ -336,34 +338,35 @@ with tab_bitacora:
                             pl_pct = ((precio_entrada_form - f_precio) / precio_entrada_form) * 100
                         return [str(f_fecha), ticker_form, f_acc, precio_entrada_form, monto_salida, f_precio, round(pl_pct, 2), round(pl_usd, 2), f_notas, usuario_actual]
                     return None
-
+ 
                 s1 = procesar_salida(fecha_s1, acc_s1, precio_s1, notas_s1)
                 if s1: filas_a_guardar.append(s1)
                 s2 = procesar_salida(fecha_s2, acc_s2, precio_s2, notas_s2)
                 if s2: filas_a_guardar.append(s2)
                 s3 = procesar_salida(fecha_s3, acc_s3, precio_s3, notas_s3)
                 if s3: filas_a_guardar.append(s3)
-
+ 
                 try:
                     sheet.append_rows(filas_a_guardar)
                     st.success(f"¡Éxito! Se registraron {len(filas_a_guardar)} filas para {ticker_form}.")
                 except Exception as e:
                     st.error(f"Hubo un problema con Google Sheets: {e}")
-
-    else:
-        # --- MODO 2: GESTIÓN EN VIVO ---
+ 
+    # ------------------------------------------
+    # MODO 2: GESTIÓN EN VIVO
+    # ------------------------------------------
+    elif modo_bitacora == "🟢 Gestión en Vivo (Portafolio)":
         col_izq, col_der = st.columns([1, 1.2])
-
+ 
         with col_izq:
             st.markdown("#### 🚀 Abrir Nueva Operación")
             st.markdown("Registra tu entrada al mercado aquí.")
             with st.form("form_abrir_trade", clear_on_submit=True):
                 
-                # ✅ PRE-LLENADO: Leer datos enviados desde la Calculadora
                 prefill = st.session_state.get('prefill_bitacora') or {}
-                ticker_default  = prefill.get('ticker', '')
+                ticker_default   = prefill.get('ticker', '')
                 acciones_default = int(prefill.get('acciones', 0))
-                precio_default  = float(prefill.get('precio', 0.01))
+                precio_default   = float(prefill.get('precio', 0.01))
                 
                 f_compra = st.date_input("Fecha de Compra", format="DD/MM/YYYY")
                 t_compra = st.text_input("Ticker (Ej: TSLA)", value=ticker_default).upper()
@@ -385,7 +388,7 @@ with tab_bitacora:
                             st.error(f"Error: {e}")
                     else:
                         st.warning("⚠️ Revisa el Ticker y el precio.")
-
+ 
         with col_der:
             st.markdown("#### 💼 Portafolio Activo")
             portafolio = {}
@@ -394,7 +397,7 @@ with tab_bitacora:
                 for t in df['Ticker'].unique():
                     df_t = df[df['Ticker'] == t]
                     entradas = df_t[df_t['P/L $'] == 0]['Acciones'].sum()
-                    salidas = df_t[df_t['P/L $'] != 0]['Acciones'].abs().sum()
+                    salidas  = df_t[df_t['P/L $'] != 0]['Acciones'].abs().sum()
                     
                     if entradas > 0:
                         tenencia_neta = entradas - salidas
@@ -406,7 +409,7 @@ with tab_bitacora:
                     if tenencia_neta != 0:
                         df_entradas = df_t[df_t['P/L $'] == 0]
                         precio_promedio = (df_entradas['Acciones'].abs() * df_entradas['Precio Entrada']).sum() / df_entradas['Acciones'].abs().sum()
-                        monto_expuesto = abs(tenencia_neta) * precio_promedio
+                        monto_expuesto  = abs(tenencia_neta) * precio_promedio
                         portafolio[t] = {
                             'Acciones': tenencia_neta,
                             'Precio Promedio': round(precio_promedio, 2),
@@ -418,7 +421,7 @@ with tab_bitacora:
                 df_portafolio.rename(columns={'index': 'Ticker'}, inplace=True)
                 capital_total = df_portafolio['Monto ($)'].sum()
                 df_portafolio['Precio Promedio'] = [formato_es(x) for x in df_portafolio['Precio Promedio']]
-                df_portafolio['Monto ($)'] = [formato_es(x) for x in df_portafolio['Monto ($)']]
+                df_portafolio['Monto ($)']        = [formato_es(x) for x in df_portafolio['Monto ($)']]
                 st.dataframe(df_portafolio, hide_index=True, use_container_width=True)
                 st.info(f"💰 **Capital Total Expuesto:** ${formato_es(capital_total)}")
                 
@@ -435,13 +438,13 @@ with tab_bitacora:
                     if btn_cerrar:
                         max_acc = portafolio[t_venta]['Acciones']
                         if abs(a_venta) > 0 and p_venta > 0 and abs(a_venta) <= abs(max_acc):
-                            p_promedio = portafolio[t_venta]['Precio Promedio']
+                            p_promedio  = portafolio[t_venta]['Precio Promedio']
                             monto_venta = abs(a_venta) * p_venta
                             
-                            if max_acc > 0:  # LONG
+                            if max_acc > 0:
                                 pl_usd = (p_venta - p_promedio) * abs(a_venta)
                                 pl_pct = ((p_venta - p_promedio) / p_promedio) * 100
-                            else:  # SHORT ✅ BUGFIX: denominador corregido a p_promedio
+                            else:
                                 pl_usd = (p_promedio - p_venta) * abs(a_venta)
                                 pl_pct = ((p_promedio - p_venta) / p_promedio) * 100
                                 
@@ -463,7 +466,165 @@ with tab_bitacora:
                             st.warning(f"⚠️ Revisa los datos. No puedes vender más de {abs(max_acc)} acciones.")
             else:
                 st.success("No tienes operaciones abiertas actualmente. ¡Busca el próximo setup! 🎯")
-
+ 
+    # ------------------------------------------
+    # MODO 3: IMPORTAR DESDE IBKR
+    # ------------------------------------------
+    else:
+        st.subheader("📥 Importar Historial desde Interactive Brokers")
+        st.markdown("Sube el CSV exportado desde tu Flex Query de IBKR para cargar operaciones históricas en lote.")
+ 
+        archivo_ibkr = st.file_uploader("Selecciona el archivo CSV de IBKR", type=["csv"])
+ 
+        if archivo_ibkr:
+            try:
+                # --- PARSEO: saltar filas de metadata (BOF, BOA, BOS) ---
+                contenido = archivo_ibkr.read().decode("utf-8")
+                lineas = contenido.splitlines()
+                lineas_datos = [
+                    l for l in lineas
+                    if not l.startswith("BOF")
+                    and not l.startswith("BOA")
+                    and not l.startswith("BOS")
+                    and l.strip() != ""
+                ]
+ 
+                df_ibkr = pd.read_csv(StringIO("\n".join(lineas_datos)))
+                df_ibkr.columns = df_ibkr.columns.str.strip()
+ 
+                # --- VALIDACIÓN DE COLUMNAS ---
+                cols_requeridas = {"Symbol", "TradeDate", "Quantity", "TradePrice",
+                                   "Open/CloseIndicator", "Buy/Sell"}
+                if not cols_requeridas.issubset(set(df_ibkr.columns)):
+                    st.error(f"⚠️ El CSV no tiene las columnas esperadas. Se encontraron: {list(df_ibkr.columns)}")
+                    st.stop()
+ 
+                # --- LIMPIEZA ---
+                df_ibkr["Quantity"]              = pd.to_numeric(df_ibkr["Quantity"],   errors="coerce")
+                df_ibkr["TradePrice"]            = pd.to_numeric(df_ibkr["TradePrice"], errors="coerce")
+                df_ibkr["TradeDate"]             = pd.to_datetime(df_ibkr["TradeDate"].astype(str), format="%Y%m%d", errors="coerce")
+                df_ibkr                          = df_ibkr.dropna(subset=["Quantity", "TradePrice", "TradeDate"])
+                df_ibkr["Buy/Sell"]              = df_ibkr["Buy/Sell"].str.strip().str.upper()
+                df_ibkr["Open/CloseIndicator"]   = df_ibkr["Open/CloseIndicator"].str.strip().str.upper()
+ 
+                # --- CONSOLIDACIÓN: precio promedio ponderado por ticker+fecha+dirección+O/C ---
+                def consolidar_grupo(group):
+                    qty_abs     = group["Quantity"].abs()
+                    precio_prom = (qty_abs * group["TradePrice"]).sum() / qty_abs.sum()
+                    qty_total   = group["Quantity"].sum()
+                    return pd.Series({
+                        "Quantity":              qty_total,
+                        "TradePrice":            round(precio_prom, 4),
+                        "TradeDate":             group["TradeDate"].iloc[0],
+                        "Buy/Sell":              group["Buy/Sell"].iloc[0],
+                        "Open/CloseIndicator":   group["Open/CloseIndicator"].iloc[0]
+                    })
+ 
+                df_consol = (
+                    df_ibkr
+                    .groupby(["Symbol", "TradeDate", "Buy/Sell", "Open/CloseIndicator"], as_index=False)
+                    .apply(consolidar_grupo)
+                    .reset_index(drop=True)
+                )
+ 
+                # --- SEPARAR APERTURAS Y CIERRES ---
+                df_aperturas = df_consol[df_consol["Open/CloseIndicator"] == "O"].copy()
+                df_cierres   = df_consol[df_consol["Open/CloseIndicator"] == "C"].copy()
+ 
+                # Ordenar por fecha para procesar cronológicamente
+                df_aperturas = df_aperturas.sort_values("TradeDate")
+                df_cierres   = df_cierres.sort_values("TradeDate")
+ 
+                # Diccionario para rastrear precio promedio de entrada por ticker
+                entradas_ref = {}
+                filas_finales = []
+                advertencias  = []
+ 
+                # Procesar aperturas
+                for _, row in df_aperturas.iterrows():
+                    ticker_r   = row["Symbol"]
+                    fecha_r    = row["TradeDate"].strftime("%Y-%m-%d")
+                    acciones_r = abs(row["Quantity"])
+                    precio_r   = row["TradePrice"]
+                    monto_r    = round(acciones_r * precio_r, 2)
+ 
+                    # Acumular precio promedio ponderado si hay entradas previas del mismo ticker
+                    if ticker_r in entradas_ref:
+                        prev        = entradas_ref[ticker_r]
+                        total_qty   = prev["qty"] + acciones_r
+                        precio_prom = (prev["precio"] * prev["qty"] + precio_r * acciones_r) / total_qty
+                        entradas_ref[ticker_r] = {"precio": round(precio_prom, 4), "qty": total_qty}
+                    else:
+                        entradas_ref[ticker_r] = {"precio": precio_r, "qty": acciones_r}
+ 
+                    fila = [fecha_r, ticker_r, acciones_r, precio_r, monto_r,
+                            0.0, 0.0, 0.0, "IBKR Import", usuario_actual]
+                    filas_finales.append(fila)
+ 
+                # Procesar cierres
+                for _, row in df_cierres.iterrows():
+                    ticker_r   = row["Symbol"]
+                    fecha_r    = row["TradeDate"].strftime("%Y-%m-%d")
+                    acciones_r = abs(row["Quantity"])
+                    precio_sal = row["TradePrice"]
+                    monto_r    = round(acciones_r * precio_sal, 2)
+ 
+                    if ticker_r in entradas_ref:
+                        precio_ent = entradas_ref[ticker_r]["precio"]
+                    else:
+                        precio_ent = precio_sal
+                        advertencias.append(ticker_r)
+ 
+                    # Long: cierra con SELL | Short: cierra con BUY
+                    if row["Buy/Sell"] == "SELL":
+                        pl_usd = round((precio_sal - precio_ent) * acciones_r, 2)
+                        pl_pct = round(((precio_sal - precio_ent) / precio_ent) * 100, 2)
+                    else:
+                        pl_usd = round((precio_ent - precio_sal) * acciones_r, 2)
+                        pl_pct = round(((precio_ent - precio_sal) / precio_ent) * 100, 2)
+ 
+                    fila = [fecha_r, ticker_r, acciones_r, precio_ent, monto_r,
+                            precio_sal, pl_pct, pl_usd, "IBKR Import", usuario_actual]
+                    filas_finales.append(fila)
+ 
+                # --- ADVERTENCIAS ---
+                if advertencias:
+                    tickers_sin_entrada = list(set(advertencias))
+                    st.warning(
+                        f"⚠️ No se encontró precio de entrada en este archivo para: **{', '.join(tickers_sin_entrada)}**. "
+                        f"Su P/L quedará en $0. Puedes editarlos manualmente en Google Sheets o en Registro Histórico."
+                    )
+ 
+                # --- PREVIEW ---
+                st.success(f"✅ Se procesaron **{len(filas_finales)} filas** listas para importar.")
+                st.markdown("#### Vista previa")
+ 
+                cols_preview = ["Fecha", "Ticker", "Acciones", "Precio Entrada",
+                                "Monto", "Precio Salida", "P/L %", "P/L $", "Notas", "Usuario"]
+                df_preview = pd.DataFrame(filas_finales, columns=cols_preview)
+                st.dataframe(df_preview, use_container_width=True, hide_index=True)
+ 
+                st.warning(
+                    "⚠️ Revisa la vista previa antes de confirmar. "
+                    "Esta acción escribe directamente en Google Sheets y no se puede deshacer automáticamente."
+                )
+ 
+                if st.button("💾 Confirmar e Importar a Sheets"):
+                    try:
+                        sheet.append_rows(filas_finales)
+                        st.success(
+                            f"🎉 ¡Importación exitosa! Se guardaron **{len(filas_finales)} registros**. "
+                            f"Haz clic en **Actualizar Bóveda** para verlos reflejados en las métricas."
+                        )
+                    except Exception as e:
+                        st.error(f"Error al escribir en Google Sheets: {e}")
+ 
+            except Exception as e:
+                st.error(f"Error al procesar el archivo: {e}")
+ 
+        else:
+            st.info("👆 Sube un archivo CSV exportado desde el Flex Query de IBKR para comenzar.")
+ 
 # ==========================================
 # PESTAÑA 3: MÉTRICAS (Dashboard Avanzado)
 # ==========================================
@@ -487,13 +648,12 @@ with tab_dash:
                 ticker_filtro = st.selectbox("Filtrar por Ticker:", tickers_unicos)
             
             with f_col3:
-                fechas_min = df_cerradas['Fecha_DT'].min().date()
-                fechas_max = df_cerradas['Fecha_DT'].max().date()
+                fechas_min  = df_cerradas['Fecha_DT'].min().date()
+                fechas_max  = df_cerradas['Fecha_DT'].max().date()
                 rango_fechas = st.date_input("Rango de Fechas:", [fechas_min, fechas_max], format="DD/MM/YYYY")
             
             st.write("---")
             
-            # --- APLICAR FILTROS ---
             df_filtrado = df_cerradas.copy()
             if ticker_filtro != "TODOS":
                 df_filtrado = df_filtrado[df_filtrado['Ticker'] == ticker_filtro]
@@ -506,60 +666,55 @@ with tab_dash:
                 ]
             
             if not df_filtrado.empty:
-
-                # --- CÁLCULOS POR OPERACIÓN COMPLETA ---
+ 
                 df_operaciones = df_filtrado.groupby(
                     ['Ticker', 'Precio Entrada'], as_index=False
                 ).agg(
                     PL_Total=('P/L $', 'sum'),
                     Fecha_DT=('Fecha_DT', 'min')
                 )
-
-                ganadoras = df_operaciones[df_operaciones['PL_Total'] > 0]
+ 
+                ganadoras  = df_operaciones[df_operaciones['PL_Total'] > 0]
                 perdedoras = df_operaciones[df_operaciones['PL_Total'] < 0]
-
-                total_trades = len(df_operaciones)
-                win_rate = (len(ganadoras) / total_trades) * 100 if total_trades > 0 else 0
-                avg_win = ganadoras['PL_Total'].mean() if not ganadoras.empty else 0
-                avg_loss = abs(perdedoras['PL_Total'].mean()) if not perdedoras.empty else 0
-                gross_profit = ganadoras['PL_Total'].sum()
-                gross_loss = abs(perdedoras['PL_Total'].sum())
-                profit_factor = gross_profit / gross_loss if gross_loss > 0 else gross_profit
-                pl_neto = df_filtrado['P/L $'].sum()
-                capital_final = capital_inicial + pl_neto
+ 
+                total_trades   = len(df_operaciones)
+                win_rate       = (len(ganadoras) / total_trades) * 100 if total_trades > 0 else 0
+                avg_win        = ganadoras['PL_Total'].mean()  if not ganadoras.empty  else 0
+                avg_loss       = abs(perdedoras['PL_Total'].mean()) if not perdedoras.empty else 0
+                gross_profit   = ganadoras['PL_Total'].sum()
+                gross_loss     = abs(perdedoras['PL_Total'].sum())
+                profit_factor  = gross_profit / gross_loss if gross_loss > 0 else gross_profit
+                pl_neto        = df_filtrado['P/L $'].sum()
+                capital_final  = capital_inicial + pl_neto
                 rentabilidad_historica = (pl_neto / capital_inicial) * 100
-
-                año_actual = pd.Timestamp.now().year
-                df_anual = df_filtrado[df_filtrado['Fecha_DT'].dt.year == año_actual]
-                pl_neto_anual = df_anual['P/L $'].sum()
+ 
+                año_actual      = pd.Timestamp.now().year
+                df_anual        = df_filtrado[df_filtrado['Fecha_DT'].dt.year == año_actual]
+                pl_neto_anual   = df_anual['P/L $'].sum()
                 rentabilidad_anual = (pl_neto_anual / capital_inicial) * 100
-
-                # ✅ Expectativa Matemática (Edge)
+ 
                 loss_rate = 100 - win_rate
-                edge = ((win_rate / 100) * avg_win) - ((loss_rate / 100) * avg_loss)
-
-                # ✅ Sharpe Ratio
+                edge      = ((win_rate / 100) * avg_win) - ((loss_rate / 100) * avg_loss)
+ 
                 df_diario_sharpe = df_filtrado.groupby('Fecha_DT')['P/L $'].sum()
                 if len(df_diario_sharpe) > 1:
                     retorno_medio = df_diario_sharpe.mean()
-                    desviacion = df_diario_sharpe.std()
-                    sharpe = (retorno_medio / desviacion) * (252 ** 0.5) if desviacion > 0 else 0
+                    desviacion    = df_diario_sharpe.std()
+                    sharpe        = (retorno_medio / desviacion) * (252 ** 0.5) if desviacion > 0 else 0
                 else:
                     sharpe = 0
-
-                # ✅ Maximum Drawdown
+ 
                 df_diario_dd = df_filtrado.groupby('Fecha_DT', as_index=False)['P/L $'].sum()
                 df_diario_dd = df_diario_dd.sort_values('Fecha_DT')
-                df_diario_dd['Balance'] = capital_inicial + df_diario_dd['P/L $'].cumsum()
-                df_diario_dd['Peak'] = df_diario_dd['Balance'].cummax()
-                df_diario_dd['Drawdown_$'] = df_diario_dd['Balance'] - df_diario_dd['Peak']
-                df_diario_dd['Drawdown_%'] = (df_diario_dd['Drawdown_$'] / df_diario_dd['Peak']) * 100
+                df_diario_dd['Balance']     = capital_inicial + df_diario_dd['P/L $'].cumsum()
+                df_diario_dd['Peak']        = df_diario_dd['Balance'].cummax()
+                df_diario_dd['Drawdown_$']  = df_diario_dd['Balance'] - df_diario_dd['Peak']
+                df_diario_dd['Drawdown_%']  = (df_diario_dd['Drawdown_$'] / df_diario_dd['Peak']) * 100
                 max_drawdown_pct = df_diario_dd['Drawdown_%'].min()
                 max_drawdown_usd = df_diario_dd['Drawdown_$'].min()
-
-                # ✅ Racha Actual
+ 
                 pl_lista = df_operaciones.sort_values('Fecha_DT')['PL_Total'].tolist()
-                racha = 0
+                racha    = 0
                 if pl_lista:
                     ultimo = 1 if pl_lista[-1] > 0 else -1
                     for pl in reversed(pl_lista):
@@ -568,61 +723,53 @@ with tab_dash:
                         else:
                             break
                 racha_texto = f"🟢 {racha} ganadoras" if ultimo == 1 else f"🔴 {racha} perdedoras"
-
-                # --- FORMATEO ---
-                win_rate_str = f"{win_rate:.1f}".replace(".", ",")
-                pf_str = formato_es(profit_factor)
-                rent_hist_str = f"{rentabilidad_historica:.2f}".replace(".", ",")
+ 
+                win_rate_str   = f"{win_rate:.1f}".replace(".", ",")
+                pf_str         = formato_es(profit_factor)
+                rent_hist_str  = f"{rentabilidad_historica:.2f}".replace(".", ",")
                 rent_anual_str = f"{rentabilidad_anual:.2f}".replace(".", ",")
-                sharpe_str = f"{sharpe:.2f}".replace(".", ",")
-                dd_pct_str = f"{max_drawdown_pct:.2f}".replace(".", ",")
-                dd_usd_str = formato_es(abs(max_drawdown_usd))
-
-                # --- MÉTRICAS CLAVE ---
+                sharpe_str     = f"{sharpe:.2f}".replace(".", ",")
+                dd_pct_str     = f"{max_drawdown_pct:.2f}".replace(".", ",")
+                dd_usd_str     = formato_es(abs(max_drawdown_usd))
+ 
                 st.markdown("#### Métricas Clave")
-
-                # Fila 1: Capital
+ 
                 r1, r2, r3, r4 = st.columns(4)
-                r1.metric("Capital Final", f"${formato_es(capital_final)}")
-                r2.metric("P/L Neto", f"${formato_es(pl_neto)}")
-                r3.metric("Rentabilidad Histórica", f"{rent_hist_str}%")
+                r1.metric("Capital Final",            f"${formato_es(capital_final)}")
+                r2.metric("P/L Neto",                 f"${formato_es(pl_neto)}")
+                r3.metric("Rentabilidad Histórica",   f"{rent_hist_str}%")
                 r4.metric(f"Rentabilidad Anual ({año_actual})", f"{rent_anual_str}%")
-
+ 
                 st.write("")
-
-                # Fila 2: KPIs de Trading
+ 
                 k1, k2, k3, k4 = st.columns(4)
-                k1.metric("Win Rate", f"{win_rate_str}%")
+                k1.metric("Win Rate",      f"{win_rate_str}%")
                 k2.metric("Profit Factor", pf_str)
-                k3.metric("Avg Win", f"${formato_es(avg_win)}")
-                k4.metric("Avg Loss", f"${formato_es(avg_loss)}")
-
+                k3.metric("Avg Win",       f"${formato_es(avg_win)}")
+                k4.metric("Avg Loss",      f"${formato_es(avg_loss)}")
+ 
                 st.write("")
-
-                # Fila 3: Métricas Avanzadas
+ 
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Expectativa (Edge)", f"${formato_es(edge)}")
-                m2.metric("Sharpe Ratio", sharpe_str)
-                # ✅ delta en gris — neutro, sin alarmar
-                m3.metric("Max Drawdown", f"{dd_pct_str}%", delta=f"-${dd_usd_str}", delta_color="off")
-                m4.metric("Racha Actual", racha_texto)
-
-                # ✅ Alerta de Drawdown al -10%
+                m2.metric("Sharpe Ratio",       sharpe_str)
+                m3.metric("Max Drawdown",       f"{dd_pct_str}%", delta=f"-${dd_usd_str}", delta_color="off")
+                m4.metric("Racha Actual",       racha_texto)
+ 
                 if max_drawdown_pct <= -10:
                     st.error(
                         f"🚨 **ALERTA DE DRAWDOWN:** Tu drawdown máximo es de **{dd_pct_str}%** "
                         f"(${dd_usd_str}). Según tu sistema, debes **cerrar todas las posiciones** "
                         f"y mantenerte fuera del mercado hasta que las condiciones mejoren."
                     )
-
+ 
                 st.write("---")
-
-                # ✅ CURVA DE EQUIDAD
+ 
                 st.markdown("#### 📈 Curva de Equidad")
                 df_diario = df_filtrado.groupby('Fecha_DT', as_index=False)['P/L $'].sum()
                 df_diario = df_diario.sort_values('Fecha_DT')
                 df_diario['Balance de Cuenta'] = capital_inicial + df_diario['P/L $'].cumsum()
-
+ 
                 chart_equidad = alt.Chart(df_diario).mark_line(
                     color='#2962ff',
                     strokeWidth=2.5,
@@ -635,35 +782,33 @@ with tab_dash:
                             title='Equidad ($)',
                             scale=alt.Scale(zero=False)),
                     tooltip=[
-                        alt.Tooltip('Fecha_DT:T', title='Fecha', format='%d-%m-%Y'),
-                        alt.Tooltip('P/L $:Q', title='P/L del Día', format='$,.2f'),
-                        alt.Tooltip('Balance de Cuenta:Q', title='Capital', format='$,.2f')
+                        alt.Tooltip('Fecha_DT:T',          title='Fecha',    format='%d-%m-%Y'),
+                        alt.Tooltip('P/L $:Q',             title='P/L del Día', format='$,.2f'),
+                        alt.Tooltip('Balance de Cuenta:Q', title='Capital',  format='$,.2f')
                     ]
                 ).properties(height=350).interactive()
-
+ 
                 st.altair_chart(chart_equidad, use_container_width=True)
-
+ 
                 st.write("---")
-
-                # --- TABLA DE HISTORIAL ---
+ 
                 st.markdown("#### 📋 Historial de Operaciones Cerradas")
                 columnas_mostrar = ['Fecha', 'Ticker', 'Acciones', 'Precio Entrada', 'Precio Salida', 'P/L %', 'P/L $', 'Notas']
                 df_mostrar = df_filtrado[columnas_mostrar].copy()
-                df_mostrar['Fecha'] = pd.to_datetime(df_mostrar['Fecha']).dt.strftime('%d/%m/%Y')
+                df_mostrar['Fecha']         = pd.to_datetime(df_mostrar['Fecha']).dt.strftime('%d/%m/%Y')
                 df_mostrar['Precio Entrada'] = df_mostrar['Precio Entrada'].apply(lambda x: f"${formato_es(x)}")
-                df_mostrar['Precio Salida'] = df_mostrar['Precio Salida'].apply(lambda x: f"${formato_es(x)}")
-                df_mostrar['P/L %'] = df_mostrar['P/L %'].apply(lambda x: f"{formato_es(x)}%")
-                df_mostrar['P/L $'] = df_mostrar['P/L $'].apply(lambda x: f"${formato_es(x)}")
+                df_mostrar['Precio Salida']  = df_mostrar['Precio Salida'].apply(lambda x: f"${formato_es(x)}")
+                df_mostrar['P/L %']          = df_mostrar['P/L %'].apply(lambda x: f"{formato_es(x)}%")
+                df_mostrar['P/L $']          = df_mostrar['P/L $'].apply(lambda x: f"${formato_es(x)}")
                 st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
-
+ 
             else:
                 st.warning("⚠️ No hay operaciones que coincidan con los filtros seleccionados.")
         else:
             st.info("💡 Aún no hay operaciones cerradas registradas para calcular métricas.")
     else:
         st.warning("⚠️ No hay datos en la base de datos o revisa tu conexión.")
-
-    # --- SECCIÓN: ELIMINAR OPERACIÓN ---
+ 
     st.write("---")
     st.markdown("### ⚙️ Administración de Datos")
     with st.expander("🗑️ Eliminar un registro de la base de datos"):
@@ -673,7 +818,7 @@ with tab_dash:
         if not df_eliminar.empty:
             if 'Usuario' in df_eliminar.columns:
                 df_eliminar = df_eliminar[df_eliminar['Usuario'] == usuario_actual]
-
+ 
             if not df_eliminar.empty:
                 df_eliminar['Fila_Excel'] = df_eliminar.index + 2
                 col_1 = df_eliminar.columns[0]
@@ -684,8 +829,8 @@ with tab_dash:
                     df_eliminar[col_2].astype(str) + " | Acciones: " +
                     df_eliminar[col_3].astype(str)
                 )
-                opciones_borrar = dict(zip(df_eliminar['Etiqueta'], df_eliminar['Fila_Excel']))
-                trade_a_borrar = st.selectbox(
+                opciones_borrar  = dict(zip(df_eliminar['Etiqueta'], df_eliminar['Fila_Excel']))
+                trade_a_borrar   = st.selectbox(
                     "Selecciona la operación que deseas eliminar:",
                     options=[""] + list(opciones_borrar.keys())
                 )
