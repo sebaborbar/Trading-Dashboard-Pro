@@ -514,24 +514,19 @@ with tab_bitacora:
                 df_ibkr["Open/CloseIndicator"] = df_ibkr["Open/CloseIndicator"].str.strip().str.upper()
 
                 # --- CONSOLIDACIÓN: precio promedio ponderado por ticker+fecha+dirección+O/C ---
-                def consolidar_grupo(group):
-                    qty_abs     = group["Quantity"].abs()
-                    precio_prom = (qty_abs * group["TradePrice"]).sum() / qty_abs.sum()
-                    qty_total   = group["Quantity"].sum()
-                    return pd.Series({
-                        "Quantity":            qty_total,
-                        "TradePrice":          round(precio_prom, 4),
-                        "TradeDate":           group["TradeDate"].iloc[0],
-                        "Buy/Sell":            group["Buy/Sell"].iloc[0],
-                        "Open/CloseIndicator": group["Open/CloseIndicator"].iloc[0]
-                    })
+                df_ibkr["_qty_abs"] = df_ibkr["Quantity"].abs()
+                df_ibkr["_weighted"] = df_ibkr["_qty_abs"] * df_ibkr["TradePrice"]
 
-                df_consol = (
-                    df_ibkr
-                    .groupby(["Symbol", "TradeDate", "Buy/Sell", "Open/CloseIndicator"], as_index=False)
-                    .apply(consolidar_grupo)
-                    .reset_index(drop=True)
+                df_consol = df_ibkr.groupby(
+                ["Symbol", "TradeDate", "Buy/Sell", "Open/CloseIndicator"], as_index=False
+                ).agg(
+                 Quantity=("Quantity", "sum"),
+                _qty_abs_sum=("_qty_abs", "sum"),
+                _weighted_sum=("_weighted", "sum")
                 )
+                df_consol["TradePrice"] = (df_consol["_weighted_sum"] / df_consol["_qty_abs_sum"]).round(4)
+                df_consol = df_consol.drop(columns=["_qty_abs_sum", "_weighted_sum"])
+                df_ibkr   = df_ibkr.drop(columns=["_qty_abs", "_weighted"])
 
                 # --- SEPARAR Y ORDENAR ---
                 df_aperturas = df_consol[df_consol["Open/CloseIndicator"] == "O"].copy().sort_values("TradeDate")
