@@ -5,6 +5,7 @@ from google.oauth2.service_account import Credentials
 import math
 import altair as alt
 from io import StringIO
+import csv
 
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Trading Dashboard", layout="wide", page_icon="📈")
@@ -27,14 +28,12 @@ if not st.session_state['logeado']:
             
             if submit:
                 usuarios_autorizados = dict(st.secrets["usuarios"])
-                
                 if usuario in usuarios_autorizados and usuarios_autorizados[usuario] == password:
                     st.session_state['logeado'] = True
                     st.session_state['usuario_actual'] = usuario
                     st.rerun()
                 else:
                     st.error("⚠️ Usuario o contraseña incorrectos.")
-                    
     st.stop()
 
 # --- SI EL LOGIN ES EXITOSO, LA APP CONTINÚA AQUÍ ---
@@ -65,10 +64,8 @@ try:
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-
     info_cuenta = json.loads(st.secrets["google_json"])
     creds = Credentials.from_service_account_info(info_cuenta, scopes=scopes)
-
     client = gspread.authorize(creds)
     sheet = client.open("DB_Trading_App").worksheet("journal")
     conexion_exitosa = True
@@ -131,7 +128,6 @@ if 'prefill_bitacora' not in st.session_state:
 # ==========================================
 with tab_calc:
     st.subheader("⚙️ Configuración del Trade")
-    
     direccion = st.radio("Dirección del Trade:", ["ALZA 🟢 (Long)", "BAJA 🔴 (Short)"], horizontal=True)
 
     col1, col2 = st.columns(2)
@@ -147,7 +143,6 @@ with tab_calc:
         ticker = st.text_input("TICKER", value="AAAA").upper()
         breakout = st.number_input("Precio Breakout/Breakdown ($)", min_value=0.0, value=50.0, step=0.5)
         atr = st.number_input("ATR ($)", min_value=0.0, value=4.89, step=0.1)
-        
         if "ALZA" in direccion:
             extremo = st.number_input("Precio Último Mínimo ($)", min_value=0.0, value=46.0, step=0.5)
         else:
@@ -210,7 +205,6 @@ with tab_calc:
             )
 
             st.write("---")
-
             col_btn1, col_btn2 = st.columns(2)
 
             with col_btn1:
@@ -240,7 +234,6 @@ with tab_calc:
                     }
                     st.session_state["selector_modo"] = "🟢 Gestión en Vivo (Portafolio)"
                     st.success("✅ Datos enviados. Ve a la pestaña **Bitácora** para confirmar la entrada.")
-
         else:
             st.error("🚨 Datos inválidos: Para ALZA, el Mínimo debe ser menor al Breakout. Para BAJA, el Máximo debe ser mayor al Breakout.")
 
@@ -362,7 +355,6 @@ with tab_bitacora:
             st.markdown("#### 🚀 Abrir Nueva Operación")
             st.markdown("Registra tu entrada al mercado aquí.")
             with st.form("form_abrir_trade", clear_on_submit=True):
-                
                 prefill = st.session_state.get('prefill_bitacora') or {}
                 ticker_default   = prefill.get('ticker', '')
                 acciones_default = int(prefill.get('acciones', 0))
@@ -375,7 +367,6 @@ with tab_bitacora:
                 n_compra = st.text_input("Notas Iniciales (Ej: Entrada Power Kick)")
                 
                 btn_abrir = st.form_submit_button("🛒 Entrar al Mercado")
-                
                 if btn_abrir:
                     if t_compra != "" and p_compra > 0:
                         monto = a_compra * p_compra
@@ -398,14 +389,12 @@ with tab_bitacora:
                     df_t = df[df['Ticker'] == t]
                     entradas = df_t[df_t['P/L $'] == 0]['Acciones'].sum()
                     salidas  = df_t[df_t['P/L $'] != 0]['Acciones'].abs().sum()
-                    
                     if entradas > 0:
                         tenencia_neta = entradas - salidas
                     elif entradas < 0:
                         tenencia_neta = entradas + salidas
                     else:
                         tenencia_neta = 0
-                        
                     if tenencia_neta != 0:
                         df_entradas = df_t[df_t['P/L $'] == 0]
                         precio_promedio = (df_entradas['Acciones'].abs() * df_entradas['Precio Entrada']).sum() / df_entradas['Acciones'].abs().sum()
@@ -432,7 +421,6 @@ with tab_bitacora:
                     a_venta = st.number_input("Cantidad de Acciones", step=1)
                     p_venta = st.number_input("Precio de Salida ($)", min_value=0.01, step=0.01)
                     n_venta = st.text_input("Notas de Salida")
-                    
                     btn_cerrar = st.form_submit_button("🎯 Registrar Salida")
                     
                     if btn_cerrar:
@@ -440,14 +428,12 @@ with tab_bitacora:
                         if abs(a_venta) > 0 and p_venta > 0 and abs(a_venta) <= abs(max_acc):
                             p_promedio  = portafolio[t_venta]['Precio Promedio']
                             monto_venta = abs(a_venta) * p_venta
-                            
                             if max_acc > 0:
                                 pl_usd = (p_venta - p_promedio) * abs(a_venta)
                                 pl_pct = ((p_venta - p_promedio) / p_promedio) * 100
                             else:
                                 pl_usd = (p_promedio - p_venta) * abs(a_venta)
                                 pl_pct = ((p_promedio - p_venta) / p_promedio) * 100
-                                
                             fila_salida = [str(f_venta), t_venta, a_venta, p_promedio, monto_venta, p_venta, round(pl_pct, 2), round(pl_usd, 2), n_venta, usuario_actual]
                             try:
                                 sheet.append_row(fila_salida)
@@ -478,25 +464,44 @@ with tab_bitacora:
 
         if archivo_ibkr:
             try:
-                # --- PARSEO: saltar filas de metadata ---
-                contenido = archivo_ibkr.read().decode("utf-8")
-                lineas = contenido.splitlines()
+                # --- PARSEO: formato IBKR con filas envueltas en comillas dobles ---
+                contenido = archivo_ibkr.read().decode("utf-8-sig")
+                contenido = contenido.replace('\r\n', '\n').replace('\r', '\n')
 
-                # Filtrar TODAS las líneas de metadata (BOF, BOA, BOS, EOF, EOS, EOA)
-                lineas_datos = [
-                    l for l in lineas
-                    if not any(l.startswith(p) for p in ["BOF", "BOA", "BOS", "EOF", "EOS", "EOA"])
-                    and l.strip() != ""
-                ]
+                prefijos_metadata = ("BOF", "BOA", "BOS", "EOF", "EOS", "EOA")
 
-                df_ibkr = pd.read_csv(StringIO("\n".join(lineas_datos)), sep=",", quotechar='"')
+                # Cada línea del archivo es una celda CSV con comillas externas
+                # que contiene otro CSV interno con valores entre comillas
+                lineas_utiles = []
+                reader_externo = csv.reader(StringIO(contenido))
+                for row in reader_externo:
+                    if not row:
+                        continue
+                    contenido_linea = row[0].strip()
+                    # Filtrar metadata
+                    if any(contenido_linea.startswith(p) for p in prefijos_metadata):
+                        continue
+                    # Parsear el CSV interno y limpiar el ; del último campo
+                    campos = list(csv.reader([contenido_linea]))[0]
+                    campos = [c.rstrip(';').strip() for c in campos]
+                    if any(c for c in campos):
+                        lineas_utiles.append(campos)
+
+                if not lineas_utiles:
+                    st.error("⚠️ No se encontraron datos válidos en el archivo.")
+                    st.stop()
+
+                # Construir DataFrame
+                header = lineas_utiles[0]
+                datos  = lineas_utiles[1:]
+                df_ibkr = pd.DataFrame(datos, columns=header)
                 df_ibkr.columns = df_ibkr.columns.str.strip()
 
                 # --- VALIDACIÓN DE COLUMNAS ---
                 cols_requeridas = {"Symbol", "TradeDate", "Quantity", "TradePrice",
                                    "Open/CloseIndicator", "Buy/Sell"}
                 if not cols_requeridas.issubset(set(df_ibkr.columns)):
-                    st.error(f"⚠️ El CSV no tiene las columnas esperadas. Se encontraron: {list(df_ibkr.columns)}")
+                    st.error(f"⚠️ Columnas encontradas: {list(df_ibkr.columns)}")
                     st.stop()
 
                 # --- LIMPIEZA ---
@@ -527,12 +532,9 @@ with tab_bitacora:
                     .reset_index(drop=True)
                 )
 
-                # --- SEPARAR APERTURAS Y CIERRES ---
-                df_aperturas = df_consol[df_consol["Open/CloseIndicator"] == "O"].copy()
-                df_cierres   = df_consol[df_consol["Open/CloseIndicator"] == "C"].copy()
-
-                df_aperturas = df_aperturas.sort_values("TradeDate")
-                df_cierres   = df_cierres.sort_values("TradeDate")
+                # --- SEPARAR Y ORDENAR ---
+                df_aperturas = df_consol[df_consol["Open/CloseIndicator"] == "O"].copy().sort_values("TradeDate")
+                df_cierres   = df_consol[df_consol["Open/CloseIndicator"] == "C"].copy().sort_values("TradeDate")
 
                 entradas_ref  = {}
                 filas_finales = []
@@ -554,9 +556,8 @@ with tab_bitacora:
                     else:
                         entradas_ref[ticker_r] = {"precio": precio_r, "qty": acciones_r}
 
-                    fila = [fecha_r, ticker_r, acciones_r, precio_r, monto_r,
-                            0.0, 0.0, 0.0, "IBKR Import", usuario_actual]
-                    filas_finales.append(fila)
+                    filas_finales.append([fecha_r, ticker_r, acciones_r, precio_r, monto_r,
+                                          0.0, 0.0, 0.0, "IBKR Import", usuario_actual])
 
                 # Procesar cierres
                 for _, row in df_cierres.iterrows():
@@ -579,22 +580,19 @@ with tab_bitacora:
                         pl_usd = round((precio_ent - precio_sal) * acciones_r, 2)
                         pl_pct = round(((precio_ent - precio_sal) / precio_ent) * 100, 2)
 
-                    fila = [fecha_r, ticker_r, acciones_r, precio_ent, monto_r,
-                            precio_sal, pl_pct, pl_usd, "IBKR Import", usuario_actual]
-                    filas_finales.append(fila)
+                    filas_finales.append([fecha_r, ticker_r, acciones_r, precio_ent, monto_r,
+                                          precio_sal, pl_pct, pl_usd, "IBKR Import", usuario_actual])
 
                 # --- ADVERTENCIAS ---
                 if advertencias:
-                    tickers_sin_entrada = list(set(advertencias))
                     st.warning(
-                        f"⚠️ No se encontró precio de entrada en este archivo para: **{', '.join(tickers_sin_entrada)}**. "
-                        f"Su P/L quedará en $0. Puedes editarlos manualmente en Google Sheets o en Registro Histórico."
+                        f"⚠️ Sin precio de entrada en este archivo para: **{', '.join(set(advertencias))}**. "
+                        f"Su P/L quedará en $0. Edítalos manualmente después."
                     )
 
                 # --- PREVIEW ---
                 st.success(f"✅ Se procesaron **{len(filas_finales)} filas** listas para importar.")
                 st.markdown("#### Vista previa")
-
                 cols_preview = ["Fecha", "Ticker", "Acciones", "Precio Entrada",
                                 "Monto", "Precio Salida", "P/L %", "P/L $", "Notas", "Usuario"]
                 df_preview = pd.DataFrame(filas_finales, columns=cols_preview)
@@ -617,7 +615,6 @@ with tab_bitacora:
 
             except Exception as e:
                 st.error(f"Error al procesar el archivo: {e}")
-
         else:
             st.info("👆 Sube un archivo CSV exportado desde el Flex Query de IBKR para comenzar.")
 
@@ -626,7 +623,6 @@ with tab_bitacora:
 # ==========================================
 with tab_dash:
     st.subheader("📊 Métricas de Rendimiento y Análisis")
-    
     st.markdown("##### ⚙️ Configuración y Filtros")
     f_col1, f_col2, f_col3 = st.columns(3)
     
@@ -638,22 +634,18 @@ with tab_dash:
         
         if not df_cerradas.empty:
             df_cerradas['Fecha_DT'] = pd.to_datetime(df_cerradas['Fecha'], errors='coerce', format='mixed')
-            
             tickers_unicos = ["TODOS"] + sorted(df_cerradas['Ticker'].unique().tolist())
             with f_col2:
                 ticker_filtro = st.selectbox("Filtrar por Ticker:", tickers_unicos)
-            
             with f_col3:
                 fechas_min   = df_cerradas['Fecha_DT'].min().date()
                 fechas_max   = df_cerradas['Fecha_DT'].max().date()
                 rango_fechas = st.date_input("Rango de Fechas:", [fechas_min, fechas_max], format="DD/MM/YYYY")
             
             st.write("---")
-            
             df_filtrado = df_cerradas.copy()
             if ticker_filtro != "TODOS":
                 df_filtrado = df_filtrado[df_filtrado['Ticker'] == ticker_filtro]
-            
             if len(rango_fechas) == 2:
                 start_date, end_date = rango_fechas
                 df_filtrado = df_filtrado[
@@ -662,7 +654,6 @@ with tab_dash:
                 ]
             
             if not df_filtrado.empty:
-
                 df_operaciones = df_filtrado.groupby(
                     ['Ticker', 'Precio Entrada'], as_index=False
                 ).agg(
@@ -729,15 +720,13 @@ with tab_dash:
                 dd_usd_str     = formato_es(abs(max_drawdown_usd))
 
                 st.markdown("#### Métricas Clave")
-
                 r1, r2, r3, r4 = st.columns(4)
-                r1.metric("Capital Final",                      f"${formato_es(capital_final)}")
-                r2.metric("P/L Neto",                          f"${formato_es(pl_neto)}")
-                r3.metric("Rentabilidad Histórica",            f"{rent_hist_str}%")
+                r1.metric("Capital Final",                       f"${formato_es(capital_final)}")
+                r2.metric("P/L Neto",                           f"${formato_es(pl_neto)}")
+                r3.metric("Rentabilidad Histórica",             f"{rent_hist_str}%")
                 r4.metric(f"Rentabilidad Anual ({año_actual})", f"{rent_anual_str}%")
 
                 st.write("")
-
                 k1, k2, k3, k4 = st.columns(4)
                 k1.metric("Win Rate",      f"{win_rate_str}%")
                 k2.metric("Profit Factor", pf_str)
@@ -745,7 +734,6 @@ with tab_dash:
                 k4.metric("Avg Loss",      f"${formato_es(avg_loss)}")
 
                 st.write("")
-
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Expectativa (Edge)", f"${formato_es(edge)}")
                 m2.metric("Sharpe Ratio",       sharpe_str)
@@ -760,7 +748,6 @@ with tab_dash:
                     )
 
                 st.write("---")
-
                 st.markdown("#### 📈 Curva de Equidad")
                 df_diario = df_filtrado.groupby('Fecha_DT', as_index=False)['P/L $'].sum()
                 df_diario = df_diario.sort_values('Fecha_DT')
@@ -771,23 +758,18 @@ with tab_dash:
                     strokeWidth=2.5,
                     point=alt.OverlayMarkDef(color='#2962ff', size=60, filled=True)
                 ).encode(
-                    x=alt.X('Fecha_DT:T',
-                            title='',
+                    x=alt.X('Fecha_DT:T', title='',
                             axis=alt.Axis(format='%d-%m-%Y', labelAngle=-45, tickCount='month', grid=True)),
-                    y=alt.Y('Balance de Cuenta:Q',
-                            title='Equidad ($)',
-                            scale=alt.Scale(zero=False)),
+                    y=alt.Y('Balance de Cuenta:Q', title='Equidad ($)', scale=alt.Scale(zero=False)),
                     tooltip=[
                         alt.Tooltip('Fecha_DT:T',          title='Fecha',       format='%d-%m-%Y'),
                         alt.Tooltip('P/L $:Q',             title='P/L del Día', format='$,.2f'),
                         alt.Tooltip('Balance de Cuenta:Q', title='Capital',     format='$,.2f')
                     ]
                 ).properties(height=350).interactive()
-
                 st.altair_chart(chart_equidad, use_container_width=True)
 
                 st.write("---")
-
                 st.markdown("#### 📋 Historial de Operaciones Cerradas")
                 columnas_mostrar = ['Fecha', 'Ticker', 'Acciones', 'Precio Entrada', 'Precio Salida', 'P/L %', 'P/L $', 'Notas']
                 df_mostrar = df_filtrado[columnas_mostrar].copy()
@@ -810,11 +792,9 @@ with tab_dash:
     with st.expander("🗑️ Eliminar un registro de la base de datos"):
         st.warning("⚠️ Cuidado: Al eliminar un registro, se borrará definitivamente de la base de datos.")
         df_eliminar = pd.DataFrame(sheet.get_all_records())
-        
         if not df_eliminar.empty:
             if 'Usuario' in df_eliminar.columns:
                 df_eliminar = df_eliminar[df_eliminar['Usuario'] == usuario_actual]
-
             if not df_eliminar.empty:
                 df_eliminar['Fila_Excel'] = df_eliminar.index + 2
                 col_1 = df_eliminar.columns[0]
