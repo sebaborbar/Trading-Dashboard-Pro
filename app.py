@@ -496,6 +496,7 @@ with tab_bitacora:
                 datos  = lineas_utiles[1:]
                 df_ibkr = pd.DataFrame(datos, columns=header)
                 df_ibkr.columns = df_ibkr.columns.str.strip()
+                st.write("Columnas detectadas:", list(df_ibkr.columns))
 
                 # --- VALIDACIÓN DE COLUMNAS ---
                 cols_requeridas = {"Symbol", "TradeDate", "Quantity", "TradePrice",
