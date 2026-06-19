@@ -736,12 +736,18 @@ with tab_dash:
                 m3.metric("Max Drawdown",       f"{dd_pct_str}%", delta=f"-${dd_usd_str}", delta_color="off")
                 m4.metric("Racha Actual",       racha_texto)
 
-                if max_drawdown_pct <= -10:
+                # Drawdown ACTUAL: el del último día registrado, no el mínimo histórico
+                drawdown_actual_pct = df_diario_dd['Drawdown_%'].iloc[-1]
+                drawdown_actual_usd = df_diario_dd['Drawdown_$'].iloc[-1]
+                dd_actual_pct_str = f"{drawdown_actual_pct:.2f}".replace(".", ",")
+                dd_actual_usd_str = formato_es(abs(drawdown_actual_usd))
+
+                if drawdown_actual_pct <= -10:
                     st.error(
-                        f"🚨 **ALERTA DE DRAWDOWN:** Tu drawdown máximo es de **{dd_pct_str}%** "
-                        f"(${dd_usd_str}). Según tu sistema, debes **cerrar todas las posiciones** "
-                        f"y mantenerte fuera del mercado hasta que las condiciones mejoren."
-                    )
+                f"🚨 **ALERTA DE DRAWDOWN:** Tu drawdown actual es de **{dd_actual_pct_str}%** "
+                f"(${dd_actual_usd_str}). Según tu sistema, debes **cerrar todas las posiciones** "
+                f"y mantenerte fuera del mercado hasta que las condiciones mejoren."
+                )
 
                 st.write("---")
                 st.markdown("#### 📈 Curva de Equidad")
