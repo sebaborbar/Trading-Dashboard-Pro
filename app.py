@@ -134,6 +134,7 @@ with tab_calc:
     with col1:
         st.markdown("**1. Datos del Capital**")
         capital = st.number_input("Capital Total ($)", min_value=0.0, value=30000.0, step=1000.0)
+        st.caption(f"💰 {formato_es(capital)}")
         riesgo_pct = st.number_input("Riesgo (%)", min_value=0.1, value=0.50, step=0.1)
         riesgo_usd = capital * (riesgo_pct / 100)
         st.info(f"**Riesgo en dinero:** ${formato_es(riesgo_usd)}")
