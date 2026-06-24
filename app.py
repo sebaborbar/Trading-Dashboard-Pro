@@ -621,72 +621,42 @@ with tab_bitacora:
 with tab_dash:
     st.subheader("📊 Métricas de Rendimiento y Análisis")
     st.markdown("##### ⚙️ Configuración y Filtros")
- 
+
     f_col1, f_col2, f_col3 = st.columns(3)
     with f_col1:
         capital_inicial = st.number_input("Capital Inicial ($):", min_value=1.0, value=30000.0, step=1000.0)
- 
+
     if conexion_exitosa and not df.empty:
         df_cerradas = df[df['P/L $'] != 0].copy()
- 
+
         if not df_cerradas.empty:
             df_cerradas['Fecha_DT'] = pd.to_datetime(df_cerradas['Fecha'], errors='coerce', format='mixed')
- 
+
             tickers_unicos = ["TODOS"] + sorted(df_cerradas['Ticker'].unique().tolist())
             with f_col2:
                 ticker_filtro = st.selectbox("Filtrar por Ticker:", tickers_unicos)
- 
+
             with f_col3:
                 fechas_min   = df_cerradas['Fecha_DT'].min().date()
                 fechas_max   = df_cerradas['Fecha_DT'].max().date()
                 rango_fechas = st.date_input("Rango de Fechas:", [fechas_min, fechas_max], format="DD/MM/YYYY")
- 
-            # --- BOTONES DE PERÍODO RÁPIDO ---
-            import datetime
-            hoy = datetime.date.today()
-            b1, b2, b3, b4, b5 = st.columns(5)
-            ytd_clicked        = b1.button("📅 YTD")
-            mes_clicked        = b2.button("30 días")
-            tres_clicked       = b3.button("3 meses")
-            seis_clicked       = b4.button("6 meses")
-            anio_clicked       = b5.button("1 año")
- 
-            # Aplicar período rápido si se presionó algún botón
-            if ytd_clicked:
-                start_date = datetime.date(hoy.year, 1, 1)
-                end_date   = hoy
-            elif mes_clicked:
-                start_date = hoy - datetime.timedelta(days=30)
-                end_date   = hoy
-            elif tres_clicked:
-                start_date = hoy - datetime.timedelta(days=90)
-                end_date   = hoy
-            elif seis_clicked:
-                start_date = hoy - datetime.timedelta(days=180)
-                end_date   = hoy
-            elif anio_clicked:
-                start_date = hoy - datetime.timedelta(days=365)
-                end_date   = hoy
-            elif len(rango_fechas) == 2:
-                start_date, end_date = rango_fechas
-            else:
-                start_date = fechas_min
-                end_date   = fechas_max
- 
+
             st.write("---")
- 
+
             # --- APLICAR FILTROS ---
             df_filtrado = df_cerradas.copy()
             if ticker_filtro != "TODOS":
                 df_filtrado = df_filtrado[df_filtrado['Ticker'] == ticker_filtro]
- 
-            df_filtrado = df_filtrado[
-                (df_filtrado['Fecha_DT'].dt.date >= start_date) &
-                (df_filtrado['Fecha_DT'].dt.date <= end_date)
-            ]
- 
+
+            if len(rango_fechas) == 2:
+                start_date, end_date = rango_fechas
+                df_filtrado = df_filtrado[
+                    (df_filtrado['Fecha_DT'].dt.date >= start_date) &
+                    (df_filtrado['Fecha_DT'].dt.date <= end_date)
+                ]
+
             if not df_filtrado.empty:
- 
+
                 # --- CÁLCULOS POR OPERACIÓN COMPLETA ---
                 df_operaciones = df_filtrado.groupby(
                     ['Ticker', 'Precio Entrada'], as_index=False
@@ -695,17 +665,17 @@ with tab_dash:
                     PL_Pct_Prom=('P/L %', 'mean'),
                     Fecha_DT=('Fecha_DT', 'min')
                 )
- 
+
                 ganadoras  = df_operaciones[df_operaciones['PL_Total'] > 0]
                 perdedoras = df_operaciones[df_operaciones['PL_Total'] < 0]
- 
+
                 total_trades   = len(df_operaciones)
                 n_ganadoras    = len(ganadoras)
                 n_perdedoras   = len(perdedoras)
                 win_rate       = (n_ganadoras / total_trades) * 100 if total_trades > 0 else 0
-                avg_win        = ganadoras['PL_Total'].mean()     if not ganadoras.empty  else 0
-                avg_loss       = abs(perdedoras['PL_Total'].mean()) if not perdedoras.empty else 0
-                avg_win_pct    = ganadoras['PL_Pct_Prom'].mean()  if not ganadoras.empty  else 0
+                avg_win        = ganadoras['PL_Total'].mean()          if not ganadoras.empty  else 0
+                avg_loss       = abs(perdedoras['PL_Total'].mean())    if not perdedoras.empty else 0
+                avg_win_pct    = ganadoras['PL_Pct_Prom'].mean()       if not ganadoras.empty  else 0
                 avg_loss_pct   = abs(perdedoras['PL_Pct_Prom'].mean()) if not perdedoras.empty else 0
                 gross_profit   = ganadoras['PL_Total'].sum()
                 gross_loss     = abs(perdedoras['PL_Total'].sum())
@@ -713,15 +683,15 @@ with tab_dash:
                 pl_neto        = df_filtrado['P/L $'].sum()
                 capital_final  = capital_inicial + pl_neto
                 rentabilidad_historica = (pl_neto / capital_inicial) * 100
- 
+
                 año_actual      = pd.Timestamp.now().year
                 df_anual        = df_filtrado[df_filtrado['Fecha_DT'].dt.year == año_actual]
                 pl_neto_anual   = df_anual['P/L $'].sum()
                 rentabilidad_anual = (pl_neto_anual / capital_inicial) * 100
- 
+
                 loss_rate = 100 - win_rate
                 edge      = ((win_rate / 100) * avg_win) - ((loss_rate / 100) * avg_loss)
- 
+
                 df_diario_sharpe = df_filtrado.groupby('Fecha_DT')['P/L $'].sum()
                 if len(df_diario_sharpe) > 1:
                     retorno_medio = df_diario_sharpe.mean()
@@ -729,7 +699,7 @@ with tab_dash:
                     sharpe        = (retorno_medio / desviacion) * (252 ** 0.5) if desviacion > 0 else 0
                 else:
                     sharpe = 0
- 
+
                 df_diario_dd = df_filtrado.groupby('Fecha_DT', as_index=False)['P/L $'].sum()
                 df_diario_dd = df_diario_dd.sort_values('Fecha_DT')
                 df_diario_dd['Balance']    = capital_inicial + df_diario_dd['P/L $'].cumsum()
@@ -738,7 +708,7 @@ with tab_dash:
                 df_diario_dd['Drawdown_%'] = (df_diario_dd['Drawdown_$'] / df_diario_dd['Peak']) * 100
                 max_drawdown_pct = df_diario_dd['Drawdown_%'].min()
                 max_drawdown_usd = df_diario_dd['Drawdown_$'].min()
- 
+
                 pl_lista = df_operaciones.sort_values('Fecha_DT')['PL_Total'].tolist()
                 racha    = 0
                 if pl_lista:
@@ -749,7 +719,7 @@ with tab_dash:
                         else:
                             break
                 racha_texto = f"🟢 {racha} ganadoras" if ultimo == 1 else f"🔴 {racha} perdedoras"
- 
+
                 # --- FORMATEO ---
                 win_rate_str      = f"{win_rate:.1f}".replace(".", ",")
                 pf_str            = formato_es(profit_factor)
@@ -760,16 +730,16 @@ with tab_dash:
                 dd_usd_str        = formato_es(abs(max_drawdown_usd))
                 avg_win_pct_str   = f"{avg_win_pct:.2f}".replace(".", ",")
                 avg_loss_pct_str  = f"{avg_loss_pct:.2f}".replace(".", ",")
- 
-                # --- FILA 0: CONTADOR DE OPERACIONES ---
+
+                # --- FILA 0: CONTADOR ---
                 st.markdown("#### Operaciones")
                 o1, o2, o3 = st.columns(3)
                 o1.metric("Total Operaciones", total_trades)
                 o2.metric("Ganadoras 🟢",      n_ganadoras)
                 o3.metric("Perdedoras 🔴",      n_perdedoras)
- 
+
                 st.write("")
- 
+
                 # --- FILA 1: CAPITAL ---
                 st.markdown("#### Métricas Clave")
                 r1, r2, r3, r4 = st.columns(4)
@@ -777,46 +747,46 @@ with tab_dash:
                 r2.metric("P/L Neto",                           f"${formato_es(pl_neto)}")
                 r3.metric("Rentabilidad Histórica",             f"{rent_hist_str}%")
                 r4.metric(f"Rentabilidad Anual ({año_actual})", f"{rent_anual_str}%")
- 
+
                 st.write("")
- 
+
                 # --- FILA 2: KPIs ---
                 k1, k2, k3, k4 = st.columns(4)
                 k1.metric("Win Rate",      f"{win_rate_str}%")
                 k2.metric("Profit Factor", pf_str)
-                k3.metric("Avg Win",       f"${formato_es(avg_win)}",  delta=f"{avg_win_pct_str}%",  delta_color="normal")
-                k4.metric("Avg Loss",      f"${formato_es(avg_loss)}", delta=f"-{avg_loss_pct_str}%", delta_color="inverse")
- 
+                k3.metric("Avg Win",       f"${formato_es(avg_win)}",  delta=f"{avg_win_pct_str}%",   delta_color="off")
+                k4.metric("Avg Loss",      f"${formato_es(avg_loss)}", delta=f"-{avg_loss_pct_str}%", delta_color="off")
+
                 st.write("")
- 
+
                 # --- FILA 3: AVANZADAS ---
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Expectativa (Edge)", f"${formato_es(edge)}")
                 m2.metric("Sharpe Ratio",       sharpe_str)
                 m3.metric("Max Drawdown",       f"{dd_pct_str}%", delta=f"-${dd_usd_str}", delta_color="off")
                 m4.metric("Racha Actual",       racha_texto)
- 
-                # Drawdown actual para alerta
+
+                # Alerta drawdown actual
                 drawdown_actual_pct = df_diario_dd['Drawdown_%'].iloc[-1]
                 drawdown_actual_usd = df_diario_dd['Drawdown_$'].iloc[-1]
                 dd_actual_pct_str   = f"{drawdown_actual_pct:.2f}".replace(".", ",")
                 dd_actual_usd_str   = formato_es(abs(drawdown_actual_usd))
- 
+
                 if drawdown_actual_pct <= -10:
                     st.error(
                         f"🚨 **ALERTA DE DRAWDOWN:** Tu drawdown actual es de **{dd_actual_pct_str}%** "
                         f"(${dd_actual_usd_str}). Según tu sistema, debes **cerrar todas las posiciones** "
                         f"y mantenerte fuera del mercado hasta que las condiciones mejoren."
                     )
- 
+
                 st.write("---")
- 
+
                 # --- CURVA DE EQUIDAD ---
                 st.markdown("#### 📈 Curva de Equidad")
                 df_diario = df_filtrado.groupby('Fecha_DT', as_index=False)['P/L $'].sum()
                 df_diario = df_diario.sort_values('Fecha_DT')
                 df_diario['Balance de Cuenta'] = capital_inicial + df_diario['P/L $'].cumsum()
- 
+
                 chart_equidad = alt.Chart(df_diario).mark_line(
                     color='#2962ff',
                     strokeWidth=2.5,
@@ -832,42 +802,9 @@ with tab_dash:
                     ]
                 ).properties(height=350).interactive()
                 st.altair_chart(chart_equidad, use_container_width=True)
- 
+
                 st.write("---")
- 
-                # --- HISTOGRAMA DE DISTRIBUCIÓN ---
-                st.markdown("#### 📊 Distribución de Operaciones (%)")
-                pl_pct_ops = df_operaciones['PL_Pct_Prom'].dropna()
- 
-                hist_chart = alt.Chart(df_operaciones).mark_bar(
-                    opacity=0.75,
-                    cornerRadiusTopLeft=3,
-                    cornerRadiusTopRight=3
-                ).encode(
-                    x=alt.X('PL_Pct_Prom:Q',
-                            bin=alt.Bin(maxbins=30),
-                            title='P/L %',
-                            axis=alt.Axis(format='.1f')),
-                    y=alt.Y('count()', title='Nº de Operaciones'),
-                    color=alt.condition(
-                        alt.datum.PL_Pct_Prom >= 0,
-                        alt.value('#26a69a'),
-                        alt.value('#ef5350')
-                    ),
-                    tooltip=[
-                        alt.Tooltip('PL_Pct_Prom:Q', title='P/L %', format='.2f'),
-                        alt.Tooltip('count()',        title='Operaciones')
-                    ]
-                ).properties(height=300).interactive()
- 
-                regla_cero = alt.Chart(pd.DataFrame({'x': [0]})).mark_rule(
-                    color='white', strokeDash=[4, 4], strokeWidth=1.5
-                ).encode(x='x:Q')
- 
-                st.altair_chart(hist_chart + regla_cero, use_container_width=True)
- 
-                st.write("---")
- 
+
                 # --- HISTORIAL ---
                 st.markdown("#### 📋 Historial de Operaciones Cerradas")
                 columnas_mostrar = ['Fecha', 'Ticker', 'Acciones', 'Precio Entrada', 'Precio Salida', 'P/L %', 'P/L $', 'Notas']
@@ -878,14 +815,14 @@ with tab_dash:
                 df_mostrar['P/L %']          = df_mostrar['P/L %'].apply(lambda x: f"{formato_es(x)}%")
                 df_mostrar['P/L $']          = df_mostrar['P/L $'].apply(lambda x: f"${formato_es(x)}")
                 st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
- 
+
             else:
                 st.warning("⚠️ No hay operaciones que coincidan con los filtros seleccionados.")
         else:
             st.info("💡 Aún no hay operaciones cerradas registradas para calcular métricas.")
     else:
         st.warning("⚠️ No hay datos en la base de datos o revisa tu conexión.")
- 
+
     st.write("---")
     st.markdown("### ⚙️ Administración de Datos")
     with st.expander("🗑️ Eliminar un registro de la base de datos"):
