@@ -465,28 +465,28 @@ with tab_bitacora:
 
         if archivo_ibkr:
             try:
-                # --- PARSEO: formato IBKR con filas envueltas en comillas dobles ---
+                # --- PARSEO: formato "flat file" de IBKR Flex Query ---
+                # El archivo trae marcadores de sección BOF/BOA/BOS...EOS/EOA/EOF
+                # y cada línea de datos es un registro CSV normal (comas + comillas
+                # por campo). Se parsea UNA sola vez con csv.reader; no hace falta
+                # doble parseo porque los campos ya vienen separados correctamente.
                 contenido = archivo_ibkr.read().decode("utf-8-sig")
                 contenido = contenido.replace('\r\n', '\n').replace('\r', '\n')
 
                 prefijos_metadata = ("BOF", "BOA", "BOS", "EOF", "EOS", "EOA")
 
-                # Cada línea del archivo es una celda CSV con comillas externas
-                # que contiene otro CSV interno con valores entre comillas
                 lineas_utiles = []
-                reader_externo = csv.reader(StringIO(contenido))
-                for row in reader_externo:
+                reader = csv.reader(StringIO(contenido))
+                for row in reader:
                     if not row:
                         continue
-                    contenido_linea = row[0].strip()
-                    # Filtrar metadata
-                    if any(contenido_linea.startswith(p) for p in prefijos_metadata):
+                    primer_campo = row[0].strip()
+                    # Filtrar filas de metadata (encabezado/cierre de sección)
+                    if any(primer_campo.startswith(p) for p in prefijos_metadata):
                         continue
-                    # Parsear el CSV interno y limpiar el ; del último campo
-                    campos = list(csv.reader([contenido_linea]))[0]
-                    campos = [c.rstrip(';').strip() for c in campos]
-                    if any(c for c in campos):
-                        lineas_utiles.append(campos)
+                    fila = [c.strip() for c in row]
+                    if any(fila):
+                        lineas_utiles.append(fila)
 
                 if not lineas_utiles:
                     st.error("⚠️ No se encontraron datos válidos en el archivo.")
