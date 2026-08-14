@@ -1423,11 +1423,12 @@ with tab_dash:
         else:
             st.info("No hay operaciones registradas en la base de datos.")
 
-    with st.expander("🔥 Borrar TODO mi Registro (Trades + Movimientos + Capital Base)"):
+    with st.expander("🔥 Borrar TODO mi Registro (Trades + Movimientos + Capital Base + Posiciones)"):
         st.error(
             "⚠️ **Esto borra permanentemente TODOS tus datos históricos:** "
             "todos tus trades en la Bitácora, todos tus movimientos de capital "
-            "(depósitos/retiros/comisiones importados) y tu Capital Base configurado. "
+            "(depósitos/retiros/comisiones importados), tu Capital Base configurado "
+            "y tu snapshot de Posiciones Abiertas. "
             "Los datos de otros usuarios que compartan este Google Sheet NO se tocan. "
             "**No se puede deshacer.**"
         )
@@ -1488,7 +1489,21 @@ with tab_dash:
                         if filas_mantener_c:
                             sheet_config.append_rows(filas_mantener_c)
 
-                    st.success("✅ Tu historial completo fue borrado. Ve a Registro Histórico para configurar tu nuevo Capital Base y empezar a importar desde IBKR.")
+                    # --- Posiciones (snapshot Open Positions): conservar solo filas de OTROS usuarios ---
+                    filas_pos_todas_borrar = sheet_posiciones.get_all_values()
+                    if len(filas_pos_todas_borrar) > 1:
+                        header_p_borrar = filas_pos_todas_borrar[0]
+                        idx_usuario_p = header_p_borrar.index("Usuario") if "Usuario" in header_p_borrar else None
+                        if idx_usuario_p is not None:
+                            filas_mantener_p = [f for f in filas_pos_todas_borrar[1:] if len(f) > idx_usuario_p and f[idx_usuario_p] != usuario_actual]
+                        else:
+                            filas_mantener_p = filas_pos_todas_borrar[1:]
+                        sheet_posiciones.clear()
+                        sheet_posiciones.append_row(header_p_borrar)
+                        if filas_mantener_p:
+                            sheet_posiciones.append_rows(filas_mantener_p)
+
+                    st.success("✅ Tu historial completo fue borrado (incluido el snapshot de posiciones). Ve a Bitácora → Importar desde IBKR para volver a cargar todo.")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error al borrar el historial: {e}")
