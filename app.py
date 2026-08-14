@@ -58,6 +58,9 @@ def formato_entero(num):
     return f"{num:,}".replace(",", ".")
 
 # --- 2. CONEXIÓN A GOOGLE SHEETS ---
+capital_base_guardado = None
+fecha_base_guardada = None
+
 try:
     import json
     scopes = [
@@ -67,7 +70,29 @@ try:
     info_cuenta = json.loads(st.secrets["google_json"])
     creds = Credentials.from_service_account_info(info_cuenta, scopes=scopes)
     client = gspread.authorize(creds)
-    sheet = client.open("DB_Trading_App").worksheet("journal")
+    spreadsheet = client.open("DB_Trading_App")
+    sheet = spreadsheet.worksheet("journal")
+
+    # Hoja "config": guarda el Capital Base + Fecha Base por usuario
+    nombres_hojas = [ws.title for ws in spreadsheet.worksheets()]
+    if "config" in nombres_hojas:
+        sheet_config = spreadsheet.worksheet("config")
+    else:
+        sheet_config = spreadsheet.add_worksheet(title="config", rows=200, cols=3)
+        sheet_config.append_row(["Usuario", "CapitalBase", "FechaBase"])
+
+    filas_config = sheet_config.get_all_values()
+    if len(filas_config) > 1:
+        df_config = pd.DataFrame(filas_config[1:], columns=filas_config[0])
+        fila_usuario_config = df_config[df_config["Usuario"] == usuario_actual]
+        if not fila_usuario_config.empty:
+            try:
+                capital_base_guardado = float(str(fila_usuario_config.iloc[0]["CapitalBase"]).replace(",", "."))
+                fecha_base_guardada = pd.to_datetime(fila_usuario_config.iloc[0]["FechaBase"]).date()
+            except (ValueError, TypeError):
+                capital_base_guardado = None
+                fecha_base_guardada = None
+
     conexion_exitosa = True
 
     filas = sheet.get_all_values()
@@ -277,6 +302,45 @@ with tab_bitacora:
     if modo_bitacora == "◀️ Registro Histórico":
         st.subheader("📄 Registro Histórico")
         st.markdown("Ideal para subir trades antiguos.")
+
+        with st.expander("⚙️ Configurar Capital Base (punto de partida para Métricas)", expanded=(capital_base_guardado is None)):
+            st.caption(
+                "Define la fecha y el capital con el que empezaste a operar bajo este sistema. "
+                "El 'Capital Inicial' de la pestaña Métricas de Rendimiento se recalculará solo "
+                "a partir de este punto cada vez que cambies el rango de fechas."
+            )
+            cb1, cb2 = st.columns(2)
+            with cb1:
+                nueva_fecha_base = st.date_input(
+                    "Fecha de inicio",
+                    value=fecha_base_guardada if fecha_base_guardada else pd.Timestamp.now().date(),
+                    format="DD/MM/YYYY",
+                    key="input_fecha_base"
+                )
+            with cb2:
+                nuevo_capital_base = st.number_input(
+                    "Capital base ($)",
+                    min_value=0.0,
+                    value=float(capital_base_guardado) if capital_base_guardado is not None else 30000.0,
+                    step=1000.0,
+                    key="input_capital_base"
+                )
+            if st.button("💾 Guardar Capital Base"):
+                try:
+                    filas_config_actual = sheet_config.get_all_values()
+                    fila_encontrada = None
+                    for idx, fila in enumerate(filas_config_actual[1:], start=2):
+                        if fila and fila[0] == usuario_actual:
+                            fila_encontrada = idx
+                            break
+                    valores_nuevos = [usuario_actual, nuevo_capital_base, str(nueva_fecha_base)]
+                    if fila_encontrada:
+                        sheet_config.update(f"A{fila_encontrada}:C{fila_encontrada}", [valores_nuevos])
+                    else:
+                        sheet_config.append_row(valores_nuevos)
+                    st.success("✅ Capital base guardado. Ve a **Métricas de Rendimiento** para verlo aplicado.")
+                except Exception as e:
+                    st.error(f"Error al guardar el capital base: {e}")
 
         with st.form("form_trade_avanzado", clear_on_submit=True):
             st.markdown("#### 1. Datos de Entrada")
@@ -623,8 +687,6 @@ with tab_dash:
     st.markdown("##### ⚙️ Configuración y Filtros")
 
     f_col1, f_col2, f_col3 = st.columns(3)
-    with f_col1:
-        capital_inicial = st.number_input("Capital Inicial ($):", min_value=1.0, value=30000.0, step=1000.0)
 
     if conexion_exitosa and not df.empty:
         df_cerradas = df[df['P/L $'] != 0].copy()
@@ -641,6 +703,30 @@ with tab_dash:
                 fechas_max   = df_cerradas['Fecha_DT'].max().date()
                 rango_fechas = st.date_input("Rango de Fechas:", [fechas_min, fechas_max], format="DD/MM/YYYY")
 
+            # --- CAPITAL INICIAL: automático desde Capital Base configurado ---
+            with f_col1:
+                if capital_base_guardado is not None and fecha_base_guardada is not None:
+                    fecha_inicio_rango = rango_fechas[0] if len(rango_fechas) == 2 else fechas_min
+                    fecha_base_dt   = pd.to_datetime(fecha_base_guardada)
+                    fecha_inicio_dt = pd.to_datetime(fecha_inicio_rango)
+
+                    if fecha_inicio_dt <= fecha_base_dt:
+                        capital_inicial = capital_base_guardado
+                    else:
+                        pl_previo = df_cerradas[
+                            (df_cerradas['Fecha_DT'] >= fecha_base_dt) &
+                            (df_cerradas['Fecha_DT'] < fecha_inicio_dt)
+                        ]['P/L $'].sum()
+                        capital_inicial = capital_base_guardado + pl_previo
+
+                    st.metric("Capital Inicial ($)", f"${formato_es(capital_inicial)}")
+                    st.caption(
+                        f"⚙️ Auto: base ${formato_es(capital_base_guardado)} el "
+                        f"{fecha_base_guardada.strftime('%d/%m/%Y')} + P/L acumulado."
+                    )
+                else:
+                    capital_inicial = None
+
             st.write("---")
 
             # --- APLICAR FILTROS ---
@@ -655,7 +741,7 @@ with tab_dash:
                     (df_filtrado['Fecha_DT'].dt.date <= end_date)
                 ]
 
-            if not df_filtrado.empty:
+            if capital_inicial is not None and not df_filtrado.empty:
 
                 # --- CÁLCULOS POR OPERACIÓN COMPLETA ---
                 df_operaciones = df_filtrado.groupby(
@@ -816,6 +902,11 @@ with tab_dash:
                 df_mostrar['P/L $']          = df_mostrar['P/L $'].apply(lambda x: f"${formato_es(x)}")
                 st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
 
+            elif capital_inicial is None:
+                st.warning(
+                    "⚠️ Configura tu **Capital Base** en Bitácora → Registro Histórico "
+                    "para ver las Métricas de Rendimiento."
+                )
             else:
                 st.warning("⚠️ No hay operaciones que coincidan con los filtros seleccionados.")
         else:
