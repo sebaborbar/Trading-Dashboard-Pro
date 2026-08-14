@@ -57,6 +57,26 @@ def formato_es(num):
 def formato_entero(num):
     return f"{num:,}".replace(",", ".")
 
+def parse_money(x):
+    """Convierte a float sin importar si Google Sheets lo formateó con coma
+    decimal (109,99), punto decimal (109.99), o formato europeo (1.234,56).
+    Sheets reformatea números automáticamente según el idioma de la hoja,
+    así que cualquier valor numérico leído de vuelta debe pasar por acá."""
+    if pd.isna(x): return 0.0
+    x = str(x).replace('$', '').replace('%', '').strip()
+    if not x: return 0.0
+    if '.' in x and ',' in x:
+        if x.rfind(',') > x.rfind('.'):
+            x = x.replace('.', '').replace(',', '.')
+        else:
+            x = x.replace(',', '')
+    elif ',' in x:
+        x = x.replace(',', '.')
+    try:
+        return float(x)
+    except ValueError:
+        return 0.0
+
 # --- 2. CONEXIÓN A GOOGLE SHEETS ---
 capital_base_guardado = None
 fecha_base_guardada = None
@@ -131,22 +151,6 @@ try:
     if len(filas) > 1:
         df = pd.DataFrame(filas[1:], columns=filas[0])
         df.columns = df.columns.str.strip()
-        
-        def parse_money(x):
-            if pd.isna(x): return 0.0
-            x = str(x).replace('$', '').replace('%', '').strip()
-            if not x: return 0.0
-            if '.' in x and ',' in x:
-                if x.rfind(',') > x.rfind('.'):
-                    x = x.replace('.', '').replace(',', '.')
-                else:
-                    x = x.replace(',', '')
-            elif ',' in x:
-                x = x.replace(',', '.')
-            try:
-                return float(x)
-            except ValueError:
-                return 0.0
 
         cols_numericas = ['Acciones', 'Precio Entrada', 'Precio Salida', 'P/L %', 'P/L $']
         for col in cols_numericas:
@@ -173,7 +177,7 @@ if conexion_exitosa:
             df_movimientos = pd.DataFrame(filas_mov[1:], columns=filas_mov[0])
             df_movimientos = df_movimientos[df_movimientos['Usuario'] == usuario_actual].copy()
             if not df_movimientos.empty:
-                df_movimientos['Monto']    = pd.to_numeric(df_movimientos['Monto'], errors='coerce').fillna(0.0)
+                df_movimientos['Monto']    = df_movimientos['Monto'].apply(parse_money)
                 df_movimientos['Fecha_DT'] = pd.to_datetime(df_movimientos['Fecha'], errors='coerce', format='mixed')
                 df_movimientos = df_movimientos.dropna(subset=['Fecha_DT'])
     except Exception:
@@ -189,7 +193,7 @@ if conexion_exitosa:
             df_posiciones = df_posiciones[df_posiciones['Usuario'] == usuario_actual].copy()
             if not df_posiciones.empty:
                 for col_num in ["Quantity", "CostBasisPrice", "MarkPrice", "PositionValue", "UnrealizedPL"]:
-                    df_posiciones[col_num] = pd.to_numeric(df_posiciones[col_num], errors='coerce').fillna(0.0)
+                    df_posiciones[col_num] = df_posiciones[col_num].apply(parse_money)
     except Exception:
         df_posiciones = pd.DataFrame()
 
