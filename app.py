@@ -104,10 +104,14 @@ try:
     # Agrega columnas nuevas a hojas ya existentes, sin tocar los datos que ya tienen.
     header_journal = sheet.row_values(1)
     if "TradeID" not in header_journal:
+        if sheet.col_count < len(header_journal) + 1:
+            sheet.add_cols(1)
         sheet.update_cell(1, len(header_journal) + 1, "TradeID")
 
     header_mov = sheet_movimientos.row_values(1)
     if "TransactionID" not in header_mov:
+        if sheet_movimientos.col_count < len(header_mov) + 1:
+            sheet_movimientos.add_cols(1)
         sheet_movimientos.update_cell(1, len(header_mov) + 1, "TransactionID")
 
     conexion_exitosa = True
