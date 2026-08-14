@@ -100,6 +100,17 @@ try:
         sheet_movimientos = spreadsheet.add_worksheet(title="movimientos", rows=500, cols=4)
         sheet_movimientos.append_row(["Usuario", "Fecha", "Monto", "Nota"])
 
+    # Hoja "posiciones": snapshot de Open Positions de IBKR por usuario.
+    # A diferencia de journal/movimientos, esto NO se acumula — cada import
+    # la reemplaza completa, porque es una foto del momento, no un historial.
+    COLS_POSICIONES = ["Usuario", "Symbol", "Side", "Quantity", "CostBasisPrice",
+                        "MarkPrice", "PositionValue", "UnrealizedPL", "ReportDate"]
+    if "posiciones" in nombres_hojas:
+        sheet_posiciones = spreadsheet.worksheet("posiciones")
+    else:
+        sheet_posiciones = spreadsheet.add_worksheet(title="posiciones", rows=200, cols=len(COLS_POSICIONES))
+        sheet_posiciones.append_row(COLS_POSICIONES)
+
     # --- MIGRACIÓN AUTOMÁTICA DE ESQUEMA ---
     # Agrega columnas nuevas a hojas ya existentes, sin tocar los datos que ya tienen.
     header_journal = sheet.row_values(1)
@@ -167,6 +178,20 @@ if conexion_exitosa:
                 df_movimientos = df_movimientos.dropna(subset=['Fecha_DT'])
     except Exception:
         df_movimientos = pd.DataFrame()
+
+# --- CARGAR SNAPSHOT DE POSICIONES ABIERTAS (Open Positions de IBKR) ---
+df_posiciones = pd.DataFrame()
+if conexion_exitosa:
+    try:
+        filas_pos = sheet_posiciones.get_all_values()
+        if len(filas_pos) > 1:
+            df_posiciones = pd.DataFrame(filas_pos[1:], columns=filas_pos[0])
+            df_posiciones = df_posiciones[df_posiciones['Usuario'] == usuario_actual].copy()
+            if not df_posiciones.empty:
+                for col_num in ["Quantity", "CostBasisPrice", "MarkPrice", "PositionValue", "UnrealizedPL"]:
+                    df_posiciones[col_num] = pd.to_numeric(df_posiciones[col_num], errors='coerce').fillna(0.0)
+    except Exception:
+        df_posiciones = pd.DataFrame()
 
 # --- 3. MENÚ DE NAVEGACIÓN ---
 tab_calc, tab_bitacora, tab_dash = st.tabs([
@@ -486,14 +511,21 @@ with tab_bitacora:
 
                 def procesar_salida(f_fecha, f_acc, f_precio, f_notas):
                     if abs(f_acc) > 0 and f_precio > 0:
-                        monto_salida = abs(f_acc) * f_precio
+                        acc_abs = abs(f_acc)
+                        monto_salida = acc_abs * f_precio
+                        # El signo de la salida es SIEMPRE contrario al de la entrada:
+                        # entrada larga (+) se cierra con salida negativa, entrada corta
+                        # (-) se cubre con salida positiva. No depende del signo que
+                        # haya tipeado el usuario en el campo, solo de su magnitud.
+                        signo_entrada = 1 if acciones_totales > 0 else -1
+                        acc_salida_signed = -signo_entrada * acc_abs
                         if acciones_totales > 0:
-                            pl_usd = (f_precio - precio_entrada_form) * abs(f_acc)
+                            pl_usd = (f_precio - precio_entrada_form) * acc_abs
                             pl_pct = ((f_precio - precio_entrada_form) / precio_entrada_form) * 100
                         else:
-                            pl_usd = (precio_entrada_form - f_precio) * abs(f_acc)
+                            pl_usd = (precio_entrada_form - f_precio) * acc_abs
                             pl_pct = ((precio_entrada_form - f_precio) / precio_entrada_form) * 100
-                        return [str(f_fecha), ticker_form, f_acc, precio_entrada_form, monto_salida, f_precio, round(pl_pct, 2), round(pl_usd, 2), f_notas, usuario_actual, ""]
+                        return [str(f_fecha), ticker_form, acc_salida_signed, precio_entrada_form, monto_salida, f_precio, round(pl_pct, 2), round(pl_usd, 2), f_notas, usuario_actual, ""]
                     return None
 
                 s1 = procesar_salida(fecha_s1, acc_s1, precio_s1, notas_s1)
@@ -524,17 +556,20 @@ with tab_bitacora:
                 acciones_default = int(prefill.get('acciones', 0))
                 precio_default   = float(prefill.get('precio', 0.01))
                 
-                f_compra = st.date_input("Fecha de Compra", format="DD/MM/YYYY")
-                t_compra = st.text_input("Ticker (Ej: TSLA)", value=ticker_default).upper()
-                a_compra = st.number_input("Cantidad de Acciones", step=1, value=acciones_default)
-                p_compra = st.number_input("Precio de Compra ($)", min_value=0.01, step=0.01, value=precio_default)
-                n_compra = st.text_input("Notas Iniciales (Ej: Entrada Power Kick)")
+                f_compra  = st.date_input("Fecha de Compra", format="DD/MM/YYYY")
+                t_compra  = st.text_input("Ticker (Ej: TSLA)", value=ticker_default).upper()
+                dir_compra = st.radio("Dirección", ["🟢 Largo (Compra)", "🔴 Corto (Venta en descubierto)"], horizontal=True)
+                a_compra  = st.number_input("Cantidad de Acciones", min_value=0, step=1, value=abs(acciones_default))
+                p_compra  = st.number_input("Precio de Compra ($)", min_value=0.01, step=0.01, value=precio_default)
+                n_compra  = st.text_input("Notas Iniciales (Ej: Entrada Power Kick)")
                 
                 btn_abrir = st.form_submit_button("🛒 Entrar al Mercado")
                 if btn_abrir:
-                    if t_compra != "" and p_compra > 0:
+                    if t_compra != "" and p_compra > 0 and a_compra > 0:
+                        signo_compra    = 1 if "Largo" in dir_compra else -1
+                        a_compra_signed = signo_compra * a_compra
                         monto = a_compra * p_compra
-                        fila = [str(f_compra), t_compra, a_compra, p_compra, monto, 0.0, 0.0, 0.0, n_compra, usuario_actual, ""]
+                        fila = [str(f_compra), t_compra, a_compra_signed, p_compra, monto, 0.0, 0.0, 0.0, n_compra, usuario_actual, ""]
                         try:
                             sheet.append_row(fila)
                             st.session_state['prefill_bitacora'] = None
@@ -542,78 +577,115 @@ with tab_bitacora:
                         except Exception as e:
                             st.error(f"Error: {e}")
                     else:
-                        st.warning("⚠️ Revisa el Ticker y el precio.")
+                        st.warning("⚠️ Revisa el Ticker, la cantidad y el precio.")
 
         with col_der:
             st.markdown("#### 💼 Portafolio Activo")
             portafolio = {}
-            
-            if conexion_exitosa and not df.empty:
+            usando_snapshot_ibkr = conexion_exitosa and not df_posiciones.empty
+
+            if usando_snapshot_ibkr:
+                # Fuente autoritativa: la foto de Open Positions de IBKR, no una
+                # reconstrucción desde el historial de Trades — inmune a huecos
+                # de fechas en los archivos que hayas importado.
+                for _, row in df_posiciones.iterrows():
+                    portafolio[row['Symbol']] = {
+                        'Acciones': row['Quantity'],
+                        'Precio Promedio': round(row['CostBasisPrice'], 2),
+                        'Monto ($)': round(abs(row['PositionValue']), 2),
+                        'P/L No Realizado': round(row['UnrealizedPL'], 2),
+                    }
+            elif conexion_exitosa and not df.empty:
+                # Respaldo: reconstrucción desde el historial de Trades, solo para
+                # usuarios que nunca importaron un snapshot de Open Positions
+                # (ej. alguien que solo usa Gestión en Vivo manual).
                 for t in df['Ticker'].unique():
                     df_t = df[df['Ticker'] == t]
-                    entradas = df_t[df_t['P/L $'] == 0]['Acciones'].sum()
-                    salidas  = df_t[df_t['P/L $'] != 0]['Acciones'].abs().sum()
-                    if entradas > 0:
-                        tenencia_neta = entradas - salidas
-                    elif entradas < 0:
-                        tenencia_neta = entradas + salidas
-                    else:
-                        tenencia_neta = 0
+                    tenencia_neta = df_t['Acciones'].sum()
                     if tenencia_neta != 0:
-                        df_entradas = df_t[df_t['P/L $'] == 0]
-                        precio_promedio = (df_entradas['Acciones'].abs() * df_entradas['Precio Entrada']).sum() / df_entradas['Acciones'].abs().sum()
+                        signo_actual = 1 if tenencia_neta > 0 else -1
+                        df_entradas = df_t[(df_t['P/L $'] == 0) & (df_t['Acciones'] * signo_actual > 0)]
+                        if not df_entradas.empty:
+                            precio_promedio = (df_entradas['Acciones'].abs() * df_entradas['Precio Entrada']).sum() / df_entradas['Acciones'].abs().sum()
+                        else:
+                            precio_promedio = 0.0
                         monto_expuesto  = abs(tenencia_neta) * precio_promedio
                         portafolio[t] = {
                             'Acciones': tenencia_neta,
                             'Precio Promedio': round(precio_promedio, 2),
                             'Monto ($)': round(monto_expuesto, 2)
                         }
-                        
+
             if portafolio:
                 df_portafolio = pd.DataFrame.from_dict(portafolio, orient='index').reset_index()
                 df_portafolio.rename(columns={'index': 'Ticker'}, inplace=True)
                 capital_total = df_portafolio['Monto ($)'].sum()
+
+                if usando_snapshot_ibkr:
+                    fecha_reporte = str(df_posiciones['ReportDate'].iloc[0]) if 'ReportDate' in df_posiciones.columns else ""
+                    fecha_reporte_fmt = fecha_reporte
+                    try:
+                        fecha_reporte_fmt = pd.to_datetime(fecha_reporte, format="%Y%m%d").strftime("%d/%m/%Y")
+                    except Exception:
+                        pass
+                    st.caption(f"📸 Foto directa de IBKR al {fecha_reporte_fmt}. Para actualizar, vuelve a importar un Flex Query con Open Positions.")
+                    pl_no_realizado_total = df_portafolio['P/L No Realizado'].sum()
+                    df_portafolio['P/L No Realizado'] = [formato_es(x) for x in df_portafolio['P/L No Realizado']]
+
                 df_portafolio['Precio Promedio'] = [formato_es(x) for x in df_portafolio['Precio Promedio']]
                 df_portafolio['Monto ($)']        = [formato_es(x) for x in df_portafolio['Monto ($)']]
                 st.dataframe(df_portafolio, hide_index=True, use_container_width=True)
                 st.info(f"💰 **Capital Total Expuesto:** ${formato_es(capital_total)}")
-                
-                st.markdown("#### 🎯 Registrar Salida")
-                with st.form("form_cerrar_trade", clear_on_submit=True):
-                    t_venta = st.selectbox("Selecciona Posición a Cerrar", df_portafolio['Ticker'].tolist())
-                    f_venta = st.date_input("Fecha de Salida", format="DD/MM/YYYY")
-                    a_venta = st.number_input("Cantidad de Acciones", step=1)
-                    p_venta = st.number_input("Precio de Salida ($)", min_value=0.01, step=0.01)
-                    n_venta = st.text_input("Notas de Salida")
-                    btn_cerrar = st.form_submit_button("🎯 Registrar Salida")
-                    
-                    if btn_cerrar:
-                        max_acc = portafolio[t_venta]['Acciones']
-                        if abs(a_venta) > 0 and p_venta > 0 and abs(a_venta) <= abs(max_acc):
-                            p_promedio  = portafolio[t_venta]['Precio Promedio']
-                            monto_venta = abs(a_venta) * p_venta
-                            if max_acc > 0:
-                                pl_usd = (p_venta - p_promedio) * abs(a_venta)
-                                pl_pct = ((p_venta - p_promedio) / p_promedio) * 100
-                            else:
-                                pl_usd = (p_promedio - p_venta) * abs(a_venta)
-                                pl_pct = ((p_promedio - p_venta) / p_promedio) * 100
-                            fila_salida = [str(f_venta), t_venta, a_venta, p_promedio, monto_venta, p_venta, round(pl_pct, 2), round(pl_usd, 2), n_venta, usuario_actual, ""]
-                            try:
-                                sheet.append_row(fila_salida)
-                                resumen = (
-                                    f"¡Salida de **{t_venta}** registrada!\n\n"
-                                    f"**Ganancia/Pérdida:** ${formato_es(pl_usd)}\n\n"
-                                    f"Usa el botón **Actualizar Bóveda** para ver los cambios."
-                                )
-                                if pl_usd >= 0:
-                                    st.success(resumen)
+                if usando_snapshot_ibkr:
+                    color_pl = "🟢" if pl_no_realizado_total >= 0 else "🔴"
+                    st.info(f"{color_pl} **P/L No Realizado Total:** ${formato_es(pl_no_realizado_total)}")
+
+                if usando_snapshot_ibkr:
+                    st.caption(
+                        "ℹ️ Estas posiciones vienen directo de IBKR. Para cerrar una, hazlo en tu bróker "
+                        "y luego vuelve a importar el Flex Query — no las cierres manualmente aquí, "
+                        "porque el próximo import va a reemplazar este snapshot de todas formas."
+                    )
+                else:
+                    st.markdown("#### 🎯 Registrar Salida")
+                    with st.form("form_cerrar_trade", clear_on_submit=True):
+                        t_venta = st.selectbox("Selecciona Posición a Cerrar", df_portafolio['Ticker'].tolist())
+                        f_venta = st.date_input("Fecha de Salida", format="DD/MM/YYYY")
+                        a_venta = st.number_input("Cantidad de Acciones", min_value=0, step=1)
+                        p_venta = st.number_input("Precio de Salida ($)", min_value=0.01, step=0.01)
+                        n_venta = st.text_input("Notas de Salida")
+                        btn_cerrar = st.form_submit_button("🎯 Registrar Salida")
+                        
+                        if btn_cerrar:
+                            max_acc = portafolio[t_venta]['Acciones']
+                            if a_venta > 0 and p_venta > 0 and a_venta <= abs(max_acc):
+                                p_promedio  = portafolio[t_venta]['Precio Promedio']
+                                monto_venta = a_venta * p_venta
+                                # El cierre va en el signo CONTRARIO a la posición abierta:
+                                # cerrar un largo (max_acc>0) resta, cubrir un corto (max_acc<0) suma.
+                                a_venta_signed = -a_venta if max_acc > 0 else a_venta
+                                if max_acc > 0:
+                                    pl_usd = (p_venta - p_promedio) * a_venta
+                                    pl_pct = ((p_venta - p_promedio) / p_promedio) * 100
                                 else:
-                                    st.error(resumen)
-                            except Exception as e:
-                                st.error(f"Error al guardar: {e}")
-                        else:
-                            st.warning(f"⚠️ Revisa los datos. No puedes vender más de {abs(max_acc)} acciones.")
+                                    pl_usd = (p_promedio - p_venta) * a_venta
+                                    pl_pct = ((p_promedio - p_venta) / p_promedio) * 100
+                                fila_salida = [str(f_venta), t_venta, a_venta_signed, p_promedio, monto_venta, p_venta, round(pl_pct, 2), round(pl_usd, 2), n_venta, usuario_actual, ""]
+                                try:
+                                    sheet.append_row(fila_salida)
+                                    resumen = (
+                                        f"¡Salida de **{t_venta}** registrada!\n\n"
+                                        f"**Ganancia/Pérdida:** ${formato_es(pl_usd)}\n\n"
+                                        f"Usa el botón **Actualizar Bóveda** para ver los cambios."
+                                    )
+                                    if pl_usd >= 0:
+                                        st.success(resumen)
+                                    else:
+                                        st.error(resumen)
+                                except Exception as e:
+                                    st.error(f"Error al guardar: {e}")
+                            else:
+                                st.warning(f"⚠️ Revisa los datos. No puedes vender más de {abs(max_acc)} acciones.")
             else:
                 st.success("No tienes operaciones abiertas actualmente. ¡Busca el próximo setup! 🎯")
 
@@ -639,6 +711,7 @@ with tab_bitacora:
 
                 filas_trades = []
                 filas_cash   = []
+                filas_posiciones = []
                 seccion_actual = None
 
                 reader = csv.reader(StringIO(contenido))
@@ -653,6 +726,8 @@ with tab_bitacora:
                             seccion_actual = "TRADES"
                         elif codigo_seccion == "CTRN":
                             seccion_actual = "CASH"
+                        elif codigo_seccion == "POST":
+                            seccion_actual = "POSICIONES"
                         else:
                             seccion_actual = None  # sección no reconocida: se ignora
                         continue
@@ -670,9 +745,11 @@ with tab_bitacora:
                         filas_trades.append(fila)
                     elif seccion_actual == "CASH":
                         filas_cash.append(fila)
+                    elif seccion_actual == "POSICIONES":
+                        filas_posiciones.append(fila)
 
-                if not filas_trades and not filas_cash:
-                    st.error("⚠️ No se encontraron datos válidos en el archivo (ni Trades ni Cash Transactions).")
+                if not filas_trades and not filas_cash and not filas_posiciones:
+                    st.error("⚠️ No se encontraron datos válidos en el archivo (ni Trades, ni Cash Transactions, ni Open Positions).")
                     st.stop()
 
                 # TradeIDs / TransactionIDs ya importados antes (para no duplicar)
@@ -692,6 +769,7 @@ with tab_bitacora:
 
                 filas_finales   = []
                 filas_cash_final = []
+                filas_posiciones_final = []
                 advertencias    = []
                 trades_omitidos = 0
                 cash_omitidos   = 0
@@ -754,32 +832,45 @@ with tab_bitacora:
                     entradas_ref = {}
 
                     for _, row in df_aperturas.iterrows():
-                        ticker_r   = row["Symbol"]
-                        fecha_r    = row["TradeDate"].strftime("%Y-%m-%d")
-                        acciones_r = abs(row["Quantity"])
-                        precio_r   = row["TradePrice"]
-                        monto_r    = round(acciones_r * precio_r, 2)
+                        ticker_r    = row["Symbol"]
+                        fecha_r     = row["TradeDate"].strftime("%Y-%m-%d")
+                        acciones_abs = abs(row["Quantity"])
+                        precio_r    = row["TradePrice"]
+                        monto_r     = round(acciones_abs * precio_r, 2)
 
-                        if ticker_r in entradas_ref:
-                            prev        = entradas_ref[ticker_r]
-                            total_qty   = prev["qty"] + acciones_r
-                            precio_prom = (prev["precio"] * prev["qty"] + precio_r * acciones_r) / total_qty
-                            entradas_ref[ticker_r] = {"precio": round(precio_prom, 4), "qty": total_qty}
+                        # Signo: BUY-to-Open (long) = positivo, SELL-to-Open (corto) = negativo.
+                        # Necesario para que "Portafolio Activo" distinga largos de cortos.
+                        signo      = 1 if row["Buy/Sell"] == "BUY" else -1
+                        acciones_r = signo * acciones_abs
+
+                        clave_prom = (ticker_r, signo)
+                        if clave_prom in entradas_ref:
+                            prev        = entradas_ref[clave_prom]
+                            total_qty   = prev["qty"] + acciones_abs
+                            precio_prom = (prev["precio"] * prev["qty"] + precio_r * acciones_abs) / total_qty
+                            entradas_ref[clave_prom] = {"precio": round(precio_prom, 4), "qty": total_qty}
                         else:
-                            entradas_ref[ticker_r] = {"precio": precio_r, "qty": acciones_r}
+                            entradas_ref[clave_prom] = {"precio": precio_r, "qty": acciones_abs}
 
                         filas_finales.append([fecha_r, ticker_r, acciones_r, precio_r, monto_r,
                                               0.0, 0.0, 0.0, "IBKR Import", usuario_actual, row["TradeIDs"]])
 
                     for _, row in df_cierres.iterrows():
-                        ticker_r   = row["Symbol"]
-                        fecha_r    = row["TradeDate"].strftime("%Y-%m-%d")
-                        acciones_r = abs(row["Quantity"])
-                        precio_sal = row["TradePrice"]
-                        monto_r    = round(acciones_r * precio_sal, 2)
+                        ticker_r     = row["Symbol"]
+                        fecha_r      = row["TradeDate"].strftime("%Y-%m-%d")
+                        acciones_abs = abs(row["Quantity"])
+                        precio_sal   = row["TradePrice"]
+                        monto_r      = round(acciones_abs * precio_sal, 2)
 
-                        if ticker_r in entradas_ref:
-                            precio_ent = entradas_ref[ticker_r]["precio"]
+                        # Un cierre BUY cubre un corto (la apertura fue SELL, signo=-1);
+                        # un cierre SELL cierra un largo (la apertura fue BUY, signo=+1).
+                        # El cierre en sí queda con el signo CONTRARIO a la apertura que cancela.
+                        signo_apertura = -1 if row["Buy/Sell"] == "BUY" else 1
+                        clave_prom     = (ticker_r, signo_apertura)
+                        acciones_r     = -signo_apertura * acciones_abs
+
+                        if clave_prom in entradas_ref:
+                            precio_ent = entradas_ref[clave_prom]["precio"]
                         else:
                             precio_ent = precio_sal
                             advertencias.append(ticker_r)
@@ -787,12 +878,12 @@ with tab_bitacora:
                         if tiene_fifo:
                             # P/L exacto de IBKR (FIFO real, comisión ya descontada)
                             pl_usd = round(row["FifoPnlRealized_sum"], 2)
-                            pl_pct = round((pl_usd / (precio_ent * acciones_r)) * 100, 2) if precio_ent > 0 else 0.0
+                            pl_pct = round((pl_usd / (precio_ent * acciones_abs)) * 100, 2) if precio_ent > 0 else 0.0
                         elif row["Buy/Sell"] == "SELL":
-                            pl_usd = round((precio_sal - precio_ent) * acciones_r, 2)
+                            pl_usd = round((precio_sal - precio_ent) * acciones_abs, 2)
                             pl_pct = round(((precio_sal - precio_ent) / precio_ent) * 100, 2)
                         else:
-                            pl_usd = round((precio_ent - precio_sal) * acciones_r, 2)
+                            pl_usd = round((precio_ent - precio_sal) * acciones_abs, 2)
                             pl_pct = round(((precio_ent - precio_sal) / precio_ent) * 100, 2)
 
                         filas_finales.append([fecha_r, ticker_r, acciones_r, precio_ent, monto_r,
@@ -834,6 +925,40 @@ with tab_bitacora:
                             str(row.get("TransactionID", "")).strip()
                         ])
 
+                # ============ SECCIÓN OPEN POSITIONS ============
+                # Es una FOTO del momento (no se acumula): se guarda tal cual viene,
+                # reemplazando por completo el snapshot anterior de este usuario.
+                if filas_posiciones:
+                    header_p = filas_posiciones[0]
+                    df_pos = pd.DataFrame(filas_posiciones[1:], columns=header_p)
+                    df_pos.columns = df_pos.columns.str.strip()
+
+                    cols_pos_requeridas = {"Symbol", "Side", "Quantity"}
+                    if not cols_pos_requeridas.issubset(set(df_pos.columns)):
+                        st.error(f"⚠️ Columnas encontradas en Open Positions: {list(df_pos.columns)}")
+                        st.stop()
+
+                    for col_num in ["Quantity", "CostBasisPrice", "MarkPrice", "PositionValue", "FifoPnlUnrealized"]:
+                        if col_num in df_pos.columns:
+                            df_pos[col_num] = pd.to_numeric(df_pos[col_num], errors="coerce").fillna(0.0)
+                        else:
+                            df_pos[col_num] = 0.0
+
+                    for _, row in df_pos.iterrows():
+                        signo   = 1 if str(row["Side"]).strip().upper() == "LONG" else -1
+                        qty_r   = signo * abs(row["Quantity"])
+                        filas_posiciones_final.append([
+                            usuario_actual,
+                            str(row["Symbol"]).strip(),
+                            str(row["Side"]).strip(),
+                            qty_r,
+                            round(row["CostBasisPrice"], 4),
+                            round(row["MarkPrice"], 4),
+                            round(row["PositionValue"], 2),
+                            round(row["FifoPnlUnrealized"], 2),
+                            str(row.get("ReportDate", "")).strip()
+                        ])
+
                 # --- ADVERTENCIAS ---
                 if advertencias:
                     st.warning(
@@ -845,7 +970,7 @@ with tab_bitacora:
                 if cash_omitidos > 0:
                     st.info(f"ℹ️ {cash_omitidos} movimientos de Cash Transactions ya habían sido importados antes — se omitieron para no duplicar.")
 
-                if not filas_finales and not filas_cash_final:
+                if not filas_finales and not filas_cash_final and not filas_posiciones_final:
                     st.warning("⚠️ No hay filas nuevas para importar (todo lo del archivo ya estaba cargado).")
                     st.stop()
 
@@ -866,6 +991,14 @@ with tab_bitacora:
                     df_preview_cash = pd.DataFrame(filas_cash_final, columns=cols_preview_cash)
                     st.dataframe(df_preview_cash, use_container_width=True, hide_index=True)
 
+                # --- PREVIEW OPEN POSITIONS ---
+                if filas_posiciones_final:
+                    st.success(f"✅ Open Positions: **{len(filas_posiciones_final)} posiciones** abiertas al {filas_posiciones_final[0][8] or 'hoy'}.")
+                    st.markdown("#### Vista previa — Posiciones Abiertas (reemplaza el snapshot anterior)")
+                    df_preview_pos = pd.DataFrame(filas_posiciones_final, columns=COLS_POSICIONES)
+                    st.dataframe(df_preview_pos, use_container_width=True, hide_index=True)
+                    st.caption("⚠️ Esto REEMPLAZA por completo tu Portafolio Activo — no se suma a lo anterior, se sustituye.")
+
                 st.warning(
                     "⚠️ Revisa la vista previa antes de confirmar. "
                     "Esta acción escribe directamente en Google Sheets y no se puede deshacer automáticamente."
@@ -877,9 +1010,25 @@ with tab_bitacora:
                             sheet.append_rows(filas_finales)
                         if filas_cash_final:
                             sheet_movimientos.append_rows(filas_cash_final)
+                        if filas_posiciones_final:
+                            # Reemplazar el snapshot: borrar filas viejas de este usuario, escribir las nuevas
+                            filas_pos_todas = sheet_posiciones.get_all_values()
+                            if len(filas_pos_todas) > 1:
+                                header_pos_actual = filas_pos_todas[0]
+                                idx_usuario_pos = header_pos_actual.index("Usuario") if "Usuario" in header_pos_actual else None
+                                if idx_usuario_pos is not None:
+                                    filas_otros_usuarios = [f for f in filas_pos_todas[1:] if len(f) > idx_usuario_pos and f[idx_usuario_pos] != usuario_actual]
+                                else:
+                                    filas_otros_usuarios = filas_pos_todas[1:]
+                                sheet_posiciones.clear()
+                                sheet_posiciones.append_row(header_pos_actual)
+                                if filas_otros_usuarios:
+                                    sheet_posiciones.append_rows(filas_otros_usuarios)
+                            sheet_posiciones.append_rows(filas_posiciones_final)
                         st.success(
-                            f"🎉 ¡Importación exitosa! Se guardaron **{len(filas_finales)} trades** y "
-                            f"**{len(filas_cash_final)} movimientos de capital**. "
+                            f"🎉 ¡Importación exitosa! Se guardaron **{len(filas_finales)} trades**, "
+                            f"**{len(filas_cash_final)} movimientos de capital** y se actualizó el snapshot de "
+                            f"**{len(filas_posiciones_final)} posiciones abiertas**. "
                             f"Haz clic en **Actualizar Bóveda** para verlos reflejados en las métricas."
                         )
                     except Exception as e:
@@ -1001,7 +1150,31 @@ with tab_dash:
                 año_actual      = pd.Timestamp.now().year
                 df_anual        = df_filtrado[df_filtrado['Fecha_DT'].dt.year == año_actual]
                 pl_neto_anual   = df_anual['P/L $'].sum()
-                rentabilidad_anual = (pl_neto_anual / capital_inicial) * 100
+
+                # Capital al INICIO DEL AÑO ACTUAL (no el inicio del rango que esté
+                # viendo en pantalla) — si el rango cubre más de un año, dividir por
+                # el capital del rango completo da una rentabilidad anual incorrecta.
+                if capital_base_guardado is not None and fecha_base_guardada is not None:
+                    fecha_inicio_anio_dt = pd.Timestamp(year=año_actual, month=1, day=1)
+                    fecha_base_dt2 = pd.to_datetime(fecha_base_guardada)
+                    if fecha_inicio_anio_dt <= fecha_base_dt2:
+                        capital_inicio_anio = capital_base_guardado
+                    else:
+                        pl_previo_anio = df_cerradas[
+                            (df_cerradas['Fecha_DT'] >= fecha_base_dt2) &
+                            (df_cerradas['Fecha_DT'] < fecha_inicio_anio_dt)
+                        ]['P/L $'].sum()
+                        mov_previo_anio = 0.0
+                        if not df_movimientos.empty:
+                            mov_previo_anio = df_movimientos[
+                                (df_movimientos['Fecha_DT'] >= fecha_base_dt2) &
+                                (df_movimientos['Fecha_DT'] < fecha_inicio_anio_dt)
+                            ]['Monto'].sum()
+                        capital_inicio_anio = capital_base_guardado + pl_previo_anio + mov_previo_anio
+                else:
+                    capital_inicio_anio = capital_inicial
+
+                rentabilidad_anual = (pl_neto_anual / capital_inicio_anio) * 100 if capital_inicio_anio else 0.0
 
                 loss_rate = 100 - win_rate
                 edge      = ((win_rate / 100) * avg_win) - ((loss_rate / 100) * avg_loss)
