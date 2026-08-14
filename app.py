@@ -93,6 +93,23 @@ try:
                 capital_base_guardado = None
                 fecha_base_guardada = None
 
+    # Hoja "movimientos": depósitos y retiros de capital por usuario
+    if "movimientos" in nombres_hojas:
+        sheet_movimientos = spreadsheet.worksheet("movimientos")
+    else:
+        sheet_movimientos = spreadsheet.add_worksheet(title="movimientos", rows=500, cols=4)
+        sheet_movimientos.append_row(["Usuario", "Fecha", "Monto", "Nota"])
+
+    # --- MIGRACIÓN AUTOMÁTICA DE ESQUEMA ---
+    # Agrega columnas nuevas a hojas ya existentes, sin tocar los datos que ya tienen.
+    header_journal = sheet.row_values(1)
+    if "TradeID" not in header_journal:
+        sheet.update_cell(1, len(header_journal) + 1, "TradeID")
+
+    header_mov = sheet_movimientos.row_values(1)
+    if "TransactionID" not in header_mov:
+        sheet_movimientos.update_cell(1, len(header_mov) + 1, "TransactionID")
+
     conexion_exitosa = True
 
     filas = sheet.get_all_values()
@@ -131,6 +148,21 @@ except Exception as e:
 # 🔒 GUARDIÁN DE PRIVACIDAD
 if 'Usuario' in df.columns:
     df = df[df['Usuario'] == usuario_actual]
+
+# --- CARGAR MOVIMIENTOS DE CAPITAL (depósitos/retiros) DEL USUARIO ---
+df_movimientos = pd.DataFrame()
+if conexion_exitosa:
+    try:
+        filas_mov = sheet_movimientos.get_all_values()
+        if len(filas_mov) > 1:
+            df_movimientos = pd.DataFrame(filas_mov[1:], columns=filas_mov[0])
+            df_movimientos = df_movimientos[df_movimientos['Usuario'] == usuario_actual].copy()
+            if not df_movimientos.empty:
+                df_movimientos['Monto']    = pd.to_numeric(df_movimientos['Monto'], errors='coerce').fillna(0.0)
+                df_movimientos['Fecha_DT'] = pd.to_datetime(df_movimientos['Fecha'], errors='coerce', format='mixed')
+                df_movimientos = df_movimientos.dropna(subset=['Fecha_DT'])
+    except Exception:
+        df_movimientos = pd.DataFrame()
 
 # --- 3. MENÚ DE NAVEGACIÓN ---
 tab_calc, tab_bitacora, tab_dash = st.tabs([
@@ -342,6 +374,69 @@ with tab_bitacora:
                 except Exception as e:
                     st.error(f"Error al guardar el capital base: {e}")
 
+        with st.expander("💵 Movimientos de Capital (Depósitos / Retiros)"):
+            st.caption(
+                "Registra cada depósito o retiro que hagas de tu cuenta de trading. "
+                "Esto ajusta el Capital Inicial/Final de Métricas para que coincida con IBKR."
+            )
+            mv1, mv2, mv3 = st.columns([1, 1, 1])
+            with mv1:
+                fecha_mov = st.date_input("Fecha del movimiento", format="DD/MM/YYYY", key="fecha_mov")
+            with mv2:
+                tipo_mov = st.radio("Tipo", ["Depósito ➕", "Retiro ➖"], key="tipo_mov", horizontal=True)
+            with mv3:
+                monto_mov = st.number_input("Monto ($)", min_value=0.0, step=100.0, key="monto_mov")
+            nota_mov = st.text_input("Nota (opcional)", key="nota_mov")
+
+            if st.button("💾 Guardar Movimiento"):
+                if monto_mov <= 0:
+                    st.warning("⚠️ Ingresa un monto mayor a cero.")
+                else:
+                    monto_firmado = monto_mov if "Depósito" in tipo_mov else -monto_mov
+                    try:
+                        sheet_movimientos.append_row([usuario_actual, str(fecha_mov), monto_firmado, nota_mov, ""])
+                        st.success("✅ Movimiento guardado. Actualiza la bóveda para verlo reflejado.")
+                    except Exception as e:
+                        st.error(f"Error al guardar el movimiento: {e}")
+
+            if not df_movimientos.empty:
+                st.markdown("###### Movimientos registrados")
+                df_mov_mostrar = df_movimientos.sort_values('Fecha_DT').copy()
+                df_mov_mostrar['Fecha']  = df_mov_mostrar['Fecha_DT'].dt.strftime('%d/%m/%Y')
+                df_mov_mostrar['Monto']  = df_mov_mostrar['Monto'].apply(lambda x: f"${formato_es(x)}")
+                st.dataframe(df_mov_mostrar[['Fecha', 'Monto', 'Nota']], hide_index=True, use_container_width=True)
+
+                etiquetas_mov = {
+                    f"{row['Fecha_DT'].strftime('%d/%m/%Y')} | ${formato_es(row['Monto'])} | {row.get('Nota', '')}": idx
+                    for idx, row in df_movimientos.sort_values('Fecha_DT').iterrows()
+                }
+                mov_a_borrar = st.selectbox(
+                    "Selecciona un movimiento para eliminar:",
+                    options=[""] + list(etiquetas_mov.keys()),
+                    key="selector_borrar_mov"
+                )
+                if st.button("🗑️ Eliminar Movimiento"):
+                    if mov_a_borrar != "":
+                        try:
+                            filas_mov_actual = sheet_movimientos.get_all_values()
+                            fila_a_borrar = None
+                            for idx, fila in enumerate(filas_mov_actual[1:], start=2):
+                                if (len(fila) >= 4 and fila[0] == usuario_actual
+                                        and fila[1] == str(df_movimientos.loc[etiquetas_mov[mov_a_borrar], 'Fecha'])
+                                        and fila[2] == str(df_movimientos.loc[etiquetas_mov[mov_a_borrar], 'Monto'])):
+                                    fila_a_borrar = idx
+                                    break
+                            if fila_a_borrar:
+                                sheet_movimientos.delete_rows(fila_a_borrar)
+                                st.success("✅ Movimiento eliminado.")
+                                st.rerun()
+                            else:
+                                st.error("No se encontró el movimiento exacto en la hoja. Bórralo manualmente en Google Sheets.")
+                        except Exception as e:
+                            st.error(f"Error al eliminar: {e}")
+                    else:
+                        st.error("⚠️ Selecciona un movimiento de la lista.")
+
         with st.form("form_trade_avanzado", clear_on_submit=True):
             st.markdown("#### 1. Datos de Entrada")
             col1, col2, col3, col4 = st.columns(4)
@@ -383,7 +478,7 @@ with tab_bitacora:
             else:
                 filas_a_guardar = []
                 monto_entrada = acciones_totales * precio_entrada_form
-                filas_a_guardar.append([str(fecha_entrada), ticker_form, acciones_totales, precio_entrada_form, monto_entrada, 0.0, 0.0, 0.0, notas_entrada, usuario_actual])
+                filas_a_guardar.append([str(fecha_entrada), ticker_form, acciones_totales, precio_entrada_form, monto_entrada, 0.0, 0.0, 0.0, notas_entrada, usuario_actual, ""])
 
                 def procesar_salida(f_fecha, f_acc, f_precio, f_notas):
                     if abs(f_acc) > 0 and f_precio > 0:
@@ -394,7 +489,7 @@ with tab_bitacora:
                         else:
                             pl_usd = (precio_entrada_form - f_precio) * abs(f_acc)
                             pl_pct = ((precio_entrada_form - f_precio) / precio_entrada_form) * 100
-                        return [str(f_fecha), ticker_form, f_acc, precio_entrada_form, monto_salida, f_precio, round(pl_pct, 2), round(pl_usd, 2), f_notas, usuario_actual]
+                        return [str(f_fecha), ticker_form, f_acc, precio_entrada_form, monto_salida, f_precio, round(pl_pct, 2), round(pl_usd, 2), f_notas, usuario_actual, ""]
                     return None
 
                 s1 = procesar_salida(fecha_s1, acc_s1, precio_s1, notas_s1)
@@ -435,7 +530,7 @@ with tab_bitacora:
                 if btn_abrir:
                     if t_compra != "" and p_compra > 0:
                         monto = a_compra * p_compra
-                        fila = [str(f_compra), t_compra, a_compra, p_compra, monto, 0.0, 0.0, 0.0, n_compra, usuario_actual]
+                        fila = [str(f_compra), t_compra, a_compra, p_compra, monto, 0.0, 0.0, 0.0, n_compra, usuario_actual, ""]
                         try:
                             sheet.append_row(fila)
                             st.session_state['prefill_bitacora'] = None
@@ -499,7 +594,7 @@ with tab_bitacora:
                             else:
                                 pl_usd = (p_promedio - p_venta) * abs(a_venta)
                                 pl_pct = ((p_promedio - p_venta) / p_promedio) * 100
-                            fila_salida = [str(f_venta), t_venta, a_venta, p_promedio, monto_venta, p_venta, round(pl_pct, 2), round(pl_usd, 2), n_venta, usuario_actual]
+                            fila_salida = [str(f_venta), t_venta, a_venta, p_promedio, monto_venta, p_venta, round(pl_pct, 2), round(pl_usd, 2), n_venta, usuario_actual, ""]
                             try:
                                 sheet.append_row(fila_salida)
                                 resumen = (
@@ -529,120 +624,211 @@ with tab_bitacora:
 
         if archivo_ibkr:
             try:
-                # --- PARSEO: formato "flat file" de IBKR Flex Query ---
-                # El archivo trae marcadores de sección BOF/BOA/BOS...EOS/EOA/EOF
-                # y cada línea de datos es un registro CSV normal (comas + comillas
-                # por campo). Se parsea UNA sola vez con csv.reader; no hace falta
-                # doble parseo porque los campos ya vienen separados correctamente.
+                # --- PARSEO: formato "flat file" de IBKR Flex Query, MULTI-SECCIÓN ---
+                # El archivo trae marcadores BOF/BOA/BOS...EOS/EOA/EOF y puede traer
+                # más de un bloque BOS/EOS (Trades, Cash Transactions, etc.), cada uno
+                # con su propio header. Se enruta cada fila a su sección según el
+                # código de sección que viene en la fila BOS (ej. "TRNT"=Trades,
+                # "CTRN"=Cash Transactions). Secciones desconocidas se ignoran solas.
                 contenido = archivo_ibkr.read().decode("utf-8-sig")
                 contenido = contenido.replace('\r\n', '\n').replace('\r', '\n')
 
-                prefijos_metadata = ("BOF", "BOA", "BOS", "EOF", "EOS", "EOA")
+                filas_trades = []
+                filas_cash   = []
+                seccion_actual = None
 
-                lineas_utiles = []
                 reader = csv.reader(StringIO(contenido))
                 for row in reader:
                     if not row:
                         continue
                     primer_campo = row[0].strip()
-                    # Filtrar filas de metadata (encabezado/cierre de sección)
-                    if any(primer_campo.startswith(p) for p in prefijos_metadata):
+
+                    if primer_campo == "BOS":
+                        codigo_seccion = row[1].strip() if len(row) > 1 else ""
+                        if codigo_seccion == "TRNT":
+                            seccion_actual = "TRADES"
+                        elif codigo_seccion == "CTRN":
+                            seccion_actual = "CASH"
+                        else:
+                            seccion_actual = None  # sección no reconocida: se ignora
                         continue
+
+                    if primer_campo in ("BOF", "BOA", "EOF", "EOS", "EOA"):
+                        if primer_campo == "EOS":
+                            seccion_actual = None
+                        continue
+
                     fila = [c.strip() for c in row]
-                    if any(fila):
-                        lineas_utiles.append(fila)
+                    if not any(fila):
+                        continue
 
-                if not lineas_utiles:
-                    st.error("⚠️ No se encontraron datos válidos en el archivo.")
+                    if seccion_actual == "TRADES":
+                        filas_trades.append(fila)
+                    elif seccion_actual == "CASH":
+                        filas_cash.append(fila)
+
+                if not filas_trades and not filas_cash:
+                    st.error("⚠️ No se encontraron datos válidos en el archivo (ni Trades ni Cash Transactions).")
                     st.stop()
 
-                # Construir DataFrame
-                header = lineas_utiles[0]
-                datos  = lineas_utiles[1:]
-                df_ibkr = pd.DataFrame(datos, columns=header)
-                df_ibkr.columns = df_ibkr.columns.str.strip()
-                st.write("Columnas detectadas:", list(df_ibkr.columns))
+                # TradeIDs / TransactionIDs ya importados antes (para no duplicar)
+                tradeids_existentes = set()
+                if 'TradeID' in df.columns:
+                    for val in df['TradeID'].dropna():
+                        for tid in str(val).split(','):
+                            tid = tid.strip()
+                            if tid:
+                                tradeids_existentes.add(tid)
 
-                # --- VALIDACIÓN DE COLUMNAS ---
-                cols_requeridas = {"Symbol", "TradeDate", "Quantity", "TradePrice",
-                                   "Open/CloseIndicator", "Buy/Sell"}
-                if not cols_requeridas.issubset(set(df_ibkr.columns)):
-                    st.error(f"⚠️ Columnas encontradas: {list(df_ibkr.columns)}")
-                    st.stop()
+                transids_existentes = set()
+                if not df_movimientos.empty and 'TransactionID' in df_movimientos.columns:
+                    transids_existentes = set(
+                        str(t).strip() for t in df_movimientos['TransactionID'].dropna() if str(t).strip()
+                    )
 
-                # --- LIMPIEZA ---
-                df_ibkr["Quantity"]            = pd.to_numeric(df_ibkr["Quantity"],   errors="coerce")
-                df_ibkr["TradePrice"]          = pd.to_numeric(df_ibkr["TradePrice"], errors="coerce")
-                df_ibkr["TradeDate"]           = pd.to_datetime(df_ibkr["TradeDate"].astype(str), format="%Y%m%d", errors="coerce")
-                df_ibkr                        = df_ibkr.dropna(subset=["Quantity", "TradePrice", "TradeDate"])
-                df_ibkr["Buy/Sell"]            = df_ibkr["Buy/Sell"].str.strip().str.upper()
-                df_ibkr["Open/CloseIndicator"] = df_ibkr["Open/CloseIndicator"].str.strip().str.upper()
+                filas_finales   = []
+                filas_cash_final = []
+                advertencias    = []
+                trades_omitidos = 0
+                cash_omitidos   = 0
 
-                # --- CONSOLIDACIÓN: precio promedio ponderado por ticker+fecha+dirección+O/C ---
-                df_ibkr["_qty_abs"] = df_ibkr["Quantity"].abs()
-                df_ibkr["_weighted"] = df_ibkr["_qty_abs"] * df_ibkr["TradePrice"]
+                # ============ SECCIÓN TRADES ============
+                if filas_trades:
+                    header_t = filas_trades[0]
+                    df_ibkr = pd.DataFrame(filas_trades[1:], columns=header_t)
+                    df_ibkr.columns = df_ibkr.columns.str.strip()
 
-                df_consol = df_ibkr.groupby(
-                ["Symbol", "TradeDate", "Buy/Sell", "Open/CloseIndicator"], as_index=False
-                ).agg(
-                 Quantity=("Quantity", "sum"),
-                _qty_abs_sum=("_qty_abs", "sum"),
-                _weighted_sum=("_weighted", "sum")
-                )
-                df_consol["TradePrice"] = (df_consol["_weighted_sum"] / df_consol["_qty_abs_sum"]).round(4)
-                df_consol = df_consol.drop(columns=["_qty_abs_sum", "_weighted_sum"])
-                df_ibkr   = df_ibkr.drop(columns=["_qty_abs", "_weighted"])
+                    cols_requeridas = {"Symbol", "TradeDate", "Quantity", "TradePrice",
+                                       "Open/CloseIndicator", "Buy/Sell"}
+                    if not cols_requeridas.issubset(set(df_ibkr.columns)):
+                        st.error(f"⚠️ Columnas encontradas en Trades: {list(df_ibkr.columns)}")
+                        st.stop()
 
-                # --- SEPARAR Y ORDENAR ---
-                df_aperturas = df_consol[df_consol["Open/CloseIndicator"] == "O"].copy().sort_values("TradeDate")
-                df_cierres   = df_consol[df_consol["Open/CloseIndicator"] == "C"].copy().sort_values("TradeDate")
+                    tiene_tradeid = "TradeID" in df_ibkr.columns
+                    tiene_fifo    = "FifoPnlRealized" in df_ibkr.columns
 
-                entradas_ref  = {}
-                filas_finales = []
-                advertencias  = []
+                    # Omitir ejecuciones ya importadas antes (por TradeID)
+                    if tiene_tradeid:
+                        filas_previas = len(df_ibkr)
+                        df_ibkr = df_ibkr[~df_ibkr["TradeID"].isin(tradeids_existentes)]
+                        trades_omitidos = filas_previas - len(df_ibkr)
 
-                # Procesar aperturas
-                for _, row in df_aperturas.iterrows():
-                    ticker_r   = row["Symbol"]
-                    fecha_r    = row["TradeDate"].strftime("%Y-%m-%d")
-                    acciones_r = abs(row["Quantity"])
-                    precio_r   = row["TradePrice"]
-                    monto_r    = round(acciones_r * precio_r, 2)
+                    df_ibkr["Quantity"]            = pd.to_numeric(df_ibkr["Quantity"],   errors="coerce")
+                    df_ibkr["TradePrice"]          = pd.to_numeric(df_ibkr["TradePrice"], errors="coerce")
+                    df_ibkr["TradeDate"]           = pd.to_datetime(df_ibkr["TradeDate"].astype(str), format="%Y%m%d", errors="coerce")
+                    if tiene_fifo:
+                        df_ibkr["FifoPnlRealized"] = pd.to_numeric(df_ibkr["FifoPnlRealized"], errors="coerce").fillna(0.0)
+                    df_ibkr                        = df_ibkr.dropna(subset=["Quantity", "TradePrice", "TradeDate"])
+                    df_ibkr["Buy/Sell"]            = df_ibkr["Buy/Sell"].str.strip().str.upper()
+                    df_ibkr["Open/CloseIndicator"] = df_ibkr["Open/CloseIndicator"].str.strip().str.upper()
 
-                    if ticker_r in entradas_ref:
-                        prev        = entradas_ref[ticker_r]
-                        total_qty   = prev["qty"] + acciones_r
-                        precio_prom = (prev["precio"] * prev["qty"] + precio_r * acciones_r) / total_qty
-                        entradas_ref[ticker_r] = {"precio": round(precio_prom, 4), "qty": total_qty}
+                    if not tiene_tradeid:
+                        df_ibkr["TradeID"] = ""
+
+                    # --- CONSOLIDACIÓN por ticker+fecha+dirección+O/C ---
+                    df_ibkr["_qty_abs"]  = df_ibkr["Quantity"].abs()
+                    df_ibkr["_weighted"] = df_ibkr["_qty_abs"] * df_ibkr["TradePrice"]
+
+                    agg_dict = {
+                        "Quantity":     ("Quantity", "sum"),
+                        "_qty_abs_sum": ("_qty_abs", "sum"),
+                        "_weighted_sum": ("_weighted", "sum"),
+                        "TradeIDs":     ("TradeID", lambda s: ",".join(sorted({str(x) for x in s if str(x).strip()}))),
+                    }
+                    if tiene_fifo:
+                        agg_dict["FifoPnlRealized_sum"] = ("FifoPnlRealized", "sum")
+
+                    df_consol = df_ibkr.groupby(
+                        ["Symbol", "TradeDate", "Buy/Sell", "Open/CloseIndicator"], as_index=False
+                    ).agg(**agg_dict)
+                    df_consol["TradePrice"] = (df_consol["_weighted_sum"] / df_consol["_qty_abs_sum"]).round(4)
+                    df_consol = df_consol.drop(columns=["_qty_abs_sum", "_weighted_sum"])
+
+                    df_aperturas = df_consol[df_consol["Open/CloseIndicator"] == "O"].copy().sort_values("TradeDate")
+                    df_cierres   = df_consol[df_consol["Open/CloseIndicator"] == "C"].copy().sort_values("TradeDate")
+
+                    entradas_ref = {}
+
+                    for _, row in df_aperturas.iterrows():
+                        ticker_r   = row["Symbol"]
+                        fecha_r    = row["TradeDate"].strftime("%Y-%m-%d")
+                        acciones_r = abs(row["Quantity"])
+                        precio_r   = row["TradePrice"]
+                        monto_r    = round(acciones_r * precio_r, 2)
+
+                        if ticker_r in entradas_ref:
+                            prev        = entradas_ref[ticker_r]
+                            total_qty   = prev["qty"] + acciones_r
+                            precio_prom = (prev["precio"] * prev["qty"] + precio_r * acciones_r) / total_qty
+                            entradas_ref[ticker_r] = {"precio": round(precio_prom, 4), "qty": total_qty}
+                        else:
+                            entradas_ref[ticker_r] = {"precio": precio_r, "qty": acciones_r}
+
+                        filas_finales.append([fecha_r, ticker_r, acciones_r, precio_r, monto_r,
+                                              0.0, 0.0, 0.0, "IBKR Import", usuario_actual, row["TradeIDs"]])
+
+                    for _, row in df_cierres.iterrows():
+                        ticker_r   = row["Symbol"]
+                        fecha_r    = row["TradeDate"].strftime("%Y-%m-%d")
+                        acciones_r = abs(row["Quantity"])
+                        precio_sal = row["TradePrice"]
+                        monto_r    = round(acciones_r * precio_sal, 2)
+
+                        if ticker_r in entradas_ref:
+                            precio_ent = entradas_ref[ticker_r]["precio"]
+                        else:
+                            precio_ent = precio_sal
+                            advertencias.append(ticker_r)
+
+                        if tiene_fifo:
+                            # P/L exacto de IBKR (FIFO real, comisión ya descontada)
+                            pl_usd = round(row["FifoPnlRealized_sum"], 2)
+                            pl_pct = round((pl_usd / (precio_ent * acciones_r)) * 100, 2) if precio_ent > 0 else 0.0
+                        elif row["Buy/Sell"] == "SELL":
+                            pl_usd = round((precio_sal - precio_ent) * acciones_r, 2)
+                            pl_pct = round(((precio_sal - precio_ent) / precio_ent) * 100, 2)
+                        else:
+                            pl_usd = round((precio_ent - precio_sal) * acciones_r, 2)
+                            pl_pct = round(((precio_ent - precio_sal) / precio_ent) * 100, 2)
+
+                        filas_finales.append([fecha_r, ticker_r, acciones_r, precio_ent, monto_r,
+                                              precio_sal, pl_pct, pl_usd, "IBKR Import", usuario_actual, row["TradeIDs"]])
+
+                # ============ SECCIÓN CASH TRANSACTIONS ============
+                if filas_cash:
+                    header_c = filas_cash[0]
+                    df_cash = pd.DataFrame(filas_cash[1:], columns=header_c)
+                    df_cash.columns = df_cash.columns.str.strip()
+
+                    cols_cash_requeridas = {"Date/Time", "Type", "Amount"}
+                    if not cols_cash_requeridas.issubset(set(df_cash.columns)):
+                        st.error(f"⚠️ Columnas encontradas en Cash Transactions: {list(df_cash.columns)}")
+                        st.stop()
+
+                    tiene_transid = "TransactionID" in df_cash.columns
+                    if tiene_transid:
+                        filas_previas_cash = len(df_cash)
+                        df_cash = df_cash[~df_cash["TransactionID"].astype(str).str.strip().isin(transids_existentes)]
+                        cash_omitidos = filas_previas_cash - len(df_cash)
                     else:
-                        entradas_ref[ticker_r] = {"precio": precio_r, "qty": acciones_r}
+                        df_cash["TransactionID"] = ""
 
-                    filas_finales.append([fecha_r, ticker_r, acciones_r, precio_r, monto_r,
-                                          0.0, 0.0, 0.0, "IBKR Import", usuario_actual])
+                    df_cash["Amount"]    = pd.to_numeric(df_cash["Amount"], errors="coerce")
+                    df_cash["FechaSolo"] = df_cash["Date/Time"].astype(str).str.split(";").str[0]
+                    df_cash["Fecha_DT"]  = pd.to_datetime(df_cash["FechaSolo"], format="%Y%m%d", errors="coerce")
+                    df_cash = df_cash.dropna(subset=["Amount", "Fecha_DT"])
 
-                # Procesar cierres
-                for _, row in df_cierres.iterrows():
-                    ticker_r   = row["Symbol"]
-                    fecha_r    = row["TradeDate"].strftime("%Y-%m-%d")
-                    acciones_r = abs(row["Quantity"])
-                    precio_sal = row["TradePrice"]
-                    monto_r    = round(acciones_r * precio_sal, 2)
-
-                    if ticker_r in entradas_ref:
-                        precio_ent = entradas_ref[ticker_r]["precio"]
-                    else:
-                        precio_ent = precio_sal
-                        advertencias.append(ticker_r)
-
-                    if row["Buy/Sell"] == "SELL":
-                        pl_usd = round((precio_sal - precio_ent) * acciones_r, 2)
-                        pl_pct = round(((precio_sal - precio_ent) / precio_ent) * 100, 2)
-                    else:
-                        pl_usd = round((precio_ent - precio_sal) * acciones_r, 2)
-                        pl_pct = round(((precio_ent - precio_sal) / precio_ent) * 100, 2)
-
-                    filas_finales.append([fecha_r, ticker_r, acciones_r, precio_ent, monto_r,
-                                          precio_sal, pl_pct, pl_usd, "IBKR Import", usuario_actual])
+                    for _, row in df_cash.iterrows():
+                        tipo   = str(row.get("Type", "")).strip()
+                        desc   = str(row.get("Description", "")).strip()
+                        nota_r = f"{tipo}: {desc}" if desc else tipo
+                        filas_cash_final.append([
+                            usuario_actual,
+                            row["Fecha_DT"].strftime("%Y-%m-%d"),
+                            round(row["Amount"], 2),
+                            nota_r,
+                            str(row.get("TransactionID", "")).strip()
+                        ])
 
                 # --- ADVERTENCIAS ---
                 if advertencias:
@@ -650,14 +836,31 @@ with tab_bitacora:
                         f"⚠️ Sin precio de entrada en este archivo para: **{', '.join(set(advertencias))}**. "
                         f"Su P/L quedará en $0. Edítalos manualmente después."
                     )
+                if trades_omitidos > 0:
+                    st.info(f"ℹ️ {trades_omitidos} ejecuciones de Trades ya habían sido importadas antes — se omitieron para no duplicar.")
+                if cash_omitidos > 0:
+                    st.info(f"ℹ️ {cash_omitidos} movimientos de Cash Transactions ya habían sido importados antes — se omitieron para no duplicar.")
 
-                # --- PREVIEW ---
-                st.success(f"✅ Se procesaron **{len(filas_finales)} filas** listas para importar.")
-                st.markdown("#### Vista previa")
-                cols_preview = ["Fecha", "Ticker", "Acciones", "Precio Entrada",
-                                "Monto", "Precio Salida", "P/L %", "P/L $", "Notas", "Usuario"]
-                df_preview = pd.DataFrame(filas_finales, columns=cols_preview)
-                st.dataframe(df_preview, use_container_width=True, hide_index=True)
+                if not filas_finales and not filas_cash_final:
+                    st.warning("⚠️ No hay filas nuevas para importar (todo lo del archivo ya estaba cargado).")
+                    st.stop()
+
+                # --- PREVIEW TRADES ---
+                if filas_finales:
+                    st.success(f"✅ Trades: se procesaron **{len(filas_finales)} filas** listas para importar.")
+                    st.markdown("#### Vista previa — Trades")
+                    cols_preview = ["Fecha", "Ticker", "Acciones", "Precio Entrada",
+                                    "Monto", "Precio Salida", "P/L %", "P/L $", "Notas", "Usuario", "TradeID"]
+                    df_preview = pd.DataFrame(filas_finales, columns=cols_preview)
+                    st.dataframe(df_preview, use_container_width=True, hide_index=True)
+
+                # --- PREVIEW CASH TRANSACTIONS ---
+                if filas_cash_final:
+                    st.success(f"✅ Cash Transactions: se procesaron **{len(filas_cash_final)} movimientos** listos para importar.")
+                    st.markdown("#### Vista previa — Movimientos de Capital")
+                    cols_preview_cash = ["Usuario", "Fecha", "Monto", "Nota", "TransactionID"]
+                    df_preview_cash = pd.DataFrame(filas_cash_final, columns=cols_preview_cash)
+                    st.dataframe(df_preview_cash, use_container_width=True, hide_index=True)
 
                 st.warning(
                     "⚠️ Revisa la vista previa antes de confirmar. "
@@ -666,9 +869,13 @@ with tab_bitacora:
 
                 if st.button("💾 Confirmar e Importar a Sheets"):
                     try:
-                        sheet.append_rows(filas_finales)
+                        if filas_finales:
+                            sheet.append_rows(filas_finales)
+                        if filas_cash_final:
+                            sheet_movimientos.append_rows(filas_cash_final)
                         st.success(
-                            f"🎉 ¡Importación exitosa! Se guardaron **{len(filas_finales)} registros**. "
+                            f"🎉 ¡Importación exitosa! Se guardaron **{len(filas_finales)} trades** y "
+                            f"**{len(filas_cash_final)} movimientos de capital**. "
                             f"Haz clic en **Actualizar Bóveda** para verlos reflejados en las métricas."
                         )
                     except Exception as e:
@@ -703,7 +910,7 @@ with tab_dash:
                 fechas_max   = df_cerradas['Fecha_DT'].max().date()
                 rango_fechas = st.date_input("Rango de Fechas:", [fechas_min, fechas_max], format="DD/MM/YYYY")
 
-            # --- CAPITAL INICIAL: automático desde Capital Base configurado ---
+            # --- CAPITAL INICIAL: automático desde Capital Base + P/L + movimientos previos ---
             with f_col1:
                 if capital_base_guardado is not None and fecha_base_guardada is not None:
                     fecha_inicio_rango = rango_fechas[0] if len(rango_fechas) == 2 else fechas_min
@@ -717,12 +924,20 @@ with tab_dash:
                             (df_cerradas['Fecha_DT'] >= fecha_base_dt) &
                             (df_cerradas['Fecha_DT'] < fecha_inicio_dt)
                         ]['P/L $'].sum()
-                        capital_inicial = capital_base_guardado + pl_previo
+
+                        mov_previo = 0.0
+                        if not df_movimientos.empty:
+                            mov_previo = df_movimientos[
+                                (df_movimientos['Fecha_DT'] >= fecha_base_dt) &
+                                (df_movimientos['Fecha_DT'] < fecha_inicio_dt)
+                            ]['Monto'].sum()
+
+                        capital_inicial = capital_base_guardado + pl_previo + mov_previo
 
                     st.metric("Capital Inicial ($)", f"${formato_es(capital_inicial)}")
                     st.caption(
                         f"⚙️ Auto: base ${formato_es(capital_base_guardado)} el "
-                        f"{fecha_base_guardada.strftime('%d/%m/%Y')} + P/L acumulado."
+                        f"{fecha_base_guardada.strftime('%d/%m/%Y')} + P/L y movimientos acumulados."
                     )
                 else:
                     capital_inicial = None
@@ -740,6 +955,14 @@ with tab_dash:
                     (df_filtrado['Fecha_DT'].dt.date >= start_date) &
                     (df_filtrado['Fecha_DT'].dt.date <= end_date)
                 ]
+
+            # Movimientos de capital DENTRO del rango seleccionado (para Capital Final y curvas)
+            movimientos_rango = pd.DataFrame(columns=['Fecha_DT', 'Monto'])
+            if not df_movimientos.empty and len(rango_fechas) == 2:
+                movimientos_rango = df_movimientos[
+                    (df_movimientos['Fecha_DT'].dt.date >= start_date) &
+                    (df_movimientos['Fecha_DT'].dt.date <= end_date)
+                ][['Fecha_DT', 'Monto']]
 
             if capital_inicial is not None and not df_filtrado.empty:
 
@@ -767,7 +990,8 @@ with tab_dash:
                 gross_loss     = abs(perdedoras['PL_Total'].sum())
                 profit_factor  = gross_profit / gross_loss if gross_loss > 0 else gross_profit
                 pl_neto        = df_filtrado['P/L $'].sum()
-                capital_final  = capital_inicial + pl_neto
+                mov_neto_rango = movimientos_rango['Monto'].sum() if not movimientos_rango.empty else 0.0
+                capital_final  = capital_inicial + pl_neto + mov_neto_rango
                 rentabilidad_historica = (pl_neto / capital_inicial) * 100
 
                 año_actual      = pd.Timestamp.now().year
@@ -786,7 +1010,15 @@ with tab_dash:
                 else:
                     sharpe = 0
 
-                df_diario_dd = df_filtrado.groupby('Fecha_DT', as_index=False)['P/L $'].sum()
+                # Serie diaria combinada: P/L de trades + movimientos de capital (para Balance/Drawdown/Equidad)
+                df_diario_trades_dd = df_filtrado.groupby('Fecha_DT', as_index=False)['P/L $'].sum()
+                if not movimientos_rango.empty:
+                    df_diario_mov_dd = movimientos_rango.groupby('Fecha_DT', as_index=False)['Monto'].sum()
+                    df_diario_mov_dd = df_diario_mov_dd.rename(columns={'Monto': 'P/L $'})
+                    df_diario_dd = pd.concat([df_diario_trades_dd, df_diario_mov_dd])
+                    df_diario_dd = df_diario_dd.groupby('Fecha_DT', as_index=False)['P/L $'].sum()
+                else:
+                    df_diario_dd = df_diario_trades_dd
                 df_diario_dd = df_diario_dd.sort_values('Fecha_DT')
                 df_diario_dd['Balance']    = capital_inicial + df_diario_dd['P/L $'].cumsum()
                 df_diario_dd['Peak']       = df_diario_dd['Balance'].cummax()
@@ -869,9 +1101,8 @@ with tab_dash:
 
                 # --- CURVA DE EQUIDAD ---
                 st.markdown("#### 📈 Curva de Equidad")
-                df_diario = df_filtrado.groupby('Fecha_DT', as_index=False)['P/L $'].sum()
-                df_diario = df_diario.sort_values('Fecha_DT')
-                df_diario['Balance de Cuenta'] = capital_inicial + df_diario['P/L $'].cumsum()
+                df_diario = df_diario_dd[['Fecha_DT', 'P/L $', 'Balance']].copy()
+                df_diario = df_diario.rename(columns={'Balance': 'Balance de Cuenta'})
 
                 chart_equidad = alt.Chart(df_diario).mark_line(
                     color='#2962ff',
@@ -882,9 +1113,9 @@ with tab_dash:
                             axis=alt.Axis(format='%d-%m-%Y', labelAngle=-45, tickCount='month', grid=True)),
                     y=alt.Y('Balance de Cuenta:Q', title='Equidad ($)', scale=alt.Scale(zero=False)),
                     tooltip=[
-                        alt.Tooltip('Fecha_DT:T',          title='Fecha',       format='%d-%m-%Y'),
-                        alt.Tooltip('P/L $:Q',             title='P/L del Día', format='$,.2f'),
-                        alt.Tooltip('Balance de Cuenta:Q', title='Capital',     format='$,.2f')
+                        alt.Tooltip('Fecha_DT:T',          title='Fecha',                    format='%d-%m-%Y'),
+                        alt.Tooltip('P/L $:Q',             title='P/L + Movimientos del Día', format='$,.2f'),
+                        alt.Tooltip('Balance de Cuenta:Q', title='Capital',                   format='$,.2f')
                     ]
                 ).properties(height=350).interactive()
                 st.altair_chart(chart_equidad, use_container_width=True)
@@ -949,3 +1180,73 @@ with tab_dash:
                 st.info("No tienes operaciones registradas para eliminar.")
         else:
             st.info("No hay operaciones registradas en la base de datos.")
+
+    with st.expander("🔥 Borrar TODO mi Registro (Trades + Movimientos + Capital Base)"):
+        st.error(
+            "⚠️ **Esto borra permanentemente TODOS tus datos históricos:** "
+            "todos tus trades en la Bitácora, todos tus movimientos de capital "
+            "(depósitos/retiros/comisiones importados) y tu Capital Base configurado. "
+            "Los datos de otros usuarios que compartan este Google Sheet NO se tocan. "
+            "**No se puede deshacer.**"
+        )
+        confirmar_check = st.checkbox(
+            "Entiendo que esta acción es irreversible y borra TODO mi historial.",
+            key="check_borrar_todo"
+        )
+        confirmar_texto = st.text_input(
+            'Escribe exactamente "BORRAR TODO" para habilitar el botón:',
+            key="texto_borrar_todo"
+        )
+        if st.button("🔥 Borrar TODO Mi Registro Definitivamente"):
+            if not confirmar_check:
+                st.error("⚠️ Marca la casilla de confirmación primero.")
+            elif confirmar_texto.strip() != "BORRAR TODO":
+                st.error('⚠️ El texto debe ser exactamente "BORRAR TODO" (sin comillas).')
+            else:
+                try:
+                    # --- Journal: conservar solo filas de OTROS usuarios ---
+                    filas_journal = sheet.get_all_values()
+                    if len(filas_journal) > 1:
+                        header_j = filas_journal[0]
+                        idx_usuario_j = header_j.index("Usuario") if "Usuario" in header_j else None
+                        if idx_usuario_j is not None:
+                            filas_mantener_j = [f for f in filas_journal[1:] if len(f) > idx_usuario_j and f[idx_usuario_j] != usuario_actual]
+                        else:
+                            filas_mantener_j = filas_journal[1:]
+                        sheet.clear()
+                        sheet.append_row(header_j)
+                        if filas_mantener_j:
+                            sheet.append_rows(filas_mantener_j)
+
+                    # --- Movimientos: conservar solo filas de OTROS usuarios ---
+                    filas_mov_todas = sheet_movimientos.get_all_values()
+                    if len(filas_mov_todas) > 1:
+                        header_m = filas_mov_todas[0]
+                        idx_usuario_m = header_m.index("Usuario") if "Usuario" in header_m else None
+                        if idx_usuario_m is not None:
+                            filas_mantener_m = [f for f in filas_mov_todas[1:] if len(f) > idx_usuario_m and f[idx_usuario_m] != usuario_actual]
+                        else:
+                            filas_mantener_m = filas_mov_todas[1:]
+                        sheet_movimientos.clear()
+                        sheet_movimientos.append_row(header_m)
+                        if filas_mantener_m:
+                            sheet_movimientos.append_rows(filas_mantener_m)
+
+                    # --- Config (Capital Base): conservar solo filas de OTROS usuarios ---
+                    filas_config_todas = sheet_config.get_all_values()
+                    if len(filas_config_todas) > 1:
+                        header_c = filas_config_todas[0]
+                        idx_usuario_c = header_c.index("Usuario") if "Usuario" in header_c else None
+                        if idx_usuario_c is not None:
+                            filas_mantener_c = [f for f in filas_config_todas[1:] if len(f) > idx_usuario_c and f[idx_usuario_c] != usuario_actual]
+                        else:
+                            filas_mantener_c = filas_config_todas[1:]
+                        sheet_config.clear()
+                        sheet_config.append_row(header_c)
+                        if filas_mantener_c:
+                            sheet_config.append_rows(filas_mantener_c)
+
+                    st.success("✅ Tu historial completo fue borrado. Ve a Registro Histórico para configurar tu nuevo Capital Base y empezar a importar desde IBKR.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al borrar el historial: {e}")
