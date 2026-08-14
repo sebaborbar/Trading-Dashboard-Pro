@@ -716,6 +716,7 @@ with tab_bitacora:
                 filas_trades = []
                 filas_cash   = []
                 filas_posiciones = []
+                filas_cashreport = []
                 seccion_actual = None
 
                 reader = csv.reader(StringIO(contenido))
@@ -732,6 +733,8 @@ with tab_bitacora:
                             seccion_actual = "CASH"
                         elif codigo_seccion == "POST":
                             seccion_actual = "POSICIONES"
+                        elif codigo_seccion == "CRTT":
+                            seccion_actual = "CASHREPORT"
                         else:
                             seccion_actual = None  # sección no reconocida: se ignora
                         continue
@@ -751,9 +754,11 @@ with tab_bitacora:
                         filas_cash.append(fila)
                     elif seccion_actual == "POSICIONES":
                         filas_posiciones.append(fila)
+                    elif seccion_actual == "CASHREPORT":
+                        filas_cashreport.append(fila)
 
-                if not filas_trades and not filas_cash and not filas_posiciones:
-                    st.error("⚠️ No se encontraron datos válidos en el archivo (ni Trades, ni Cash Transactions, ni Open Positions).")
+                if not filas_trades and not filas_cash and not filas_posiciones and not filas_cashreport:
+                    st.error("⚠️ No se encontraron datos válidos en el archivo (ni Trades, ni Cash Transactions, ni Open Positions, ni Cash Report).")
                     st.stop()
 
                 # TradeIDs / TransactionIDs ya importados antes (para no duplicar)
@@ -774,6 +779,7 @@ with tab_bitacora:
                 filas_finales   = []
                 filas_cash_final = []
                 filas_posiciones_final = []
+                capital_calculado_ibkr = None   # (capital_total, fecha) si viene Cash Report
                 advertencias    = []
                 trades_omitidos = 0
                 cash_omitidos   = 0
@@ -932,6 +938,7 @@ with tab_bitacora:
                 # ============ SECCIÓN OPEN POSITIONS ============
                 # Es una FOTO del momento (no se acumula): se guarda tal cual viene,
                 # reemplazando por completo el snapshot anterior de este usuario.
+                valor_posiciones_total = 0.0
                 if filas_posiciones:
                     header_p = filas_posiciones[0]
                     df_pos = pd.DataFrame(filas_posiciones[1:], columns=header_p)
@@ -948,6 +955,8 @@ with tab_bitacora:
                         else:
                             df_pos[col_num] = 0.0
 
+                    valor_posiciones_total = df_pos["PositionValue"].sum()
+
                     for _, row in df_pos.iterrows():
                         signo   = 1 if str(row["Side"]).strip().upper() == "LONG" else -1
                         qty_r   = signo * abs(row["Quantity"])
@@ -963,6 +972,29 @@ with tab_bitacora:
                             str(row.get("ReportDate", "")).strip()
                         ])
 
+                # ============ SECCIÓN CASH REPORT ============
+                # Capital Total Real = Efectivo (Ending Cash) + Valor de Posiciones Abiertas.
+                # Esto REEMPLAZA el Capital Base — ya no se tipea a mano.
+                if filas_cashreport:
+                    header_cr = filas_cashreport[0]
+                    df_cr = pd.DataFrame(filas_cashreport[1:], columns=header_cr)
+                    df_cr.columns = df_cr.columns.str.strip()
+
+                    cols_cr_requeridas = {"ToDate", "EndingCash"}
+                    if not cols_cr_requeridas.issubset(set(df_cr.columns)):
+                        st.error(f"⚠️ Columnas encontradas en Cash Report: {list(df_cr.columns)}")
+                        st.stop()
+
+                    df_cr["EndingCash"] = pd.to_numeric(df_cr["EndingCash"], errors="coerce").fillna(0.0)
+                    df_cr["ToDate_DT"]  = pd.to_datetime(df_cr["ToDate"].astype(str), format="%Y%m%d", errors="coerce")
+                    df_cr = df_cr.dropna(subset=["ToDate_DT"])
+
+                    if not df_cr.empty:
+                        fila_cr = df_cr.iloc[0]
+                        ending_cash = fila_cr["EndingCash"]
+                        capital_total_hoy = ending_cash + valor_posiciones_total
+                        capital_calculado_ibkr = (round(capital_total_hoy, 2), fila_cr["ToDate_DT"].date())
+
                 # --- ADVERTENCIAS ---
                 if advertencias:
                     st.warning(
@@ -974,7 +1006,7 @@ with tab_bitacora:
                 if cash_omitidos > 0:
                     st.info(f"ℹ️ {cash_omitidos} movimientos de Cash Transactions ya habían sido importados antes — se omitieron para no duplicar.")
 
-                if not filas_finales and not filas_cash_final and not filas_posiciones_final:
+                if not filas_finales and not filas_cash_final and not filas_posiciones_final and capital_calculado_ibkr is None:
                     st.warning("⚠️ No hay filas nuevas para importar (todo lo del archivo ya estaba cargado).")
                     st.stop()
 
@@ -1003,6 +1035,15 @@ with tab_bitacora:
                     st.dataframe(df_preview_pos, use_container_width=True, hide_index=True)
                     st.caption("⚠️ Esto REEMPLAZA por completo tu Portafolio Activo — no se suma a lo anterior, se sustituye.")
 
+                # --- PREVIEW CASH REPORT / CAPITAL REAL ---
+                if capital_calculado_ibkr is not None:
+                    capital_total_val, fecha_capital_val = capital_calculado_ibkr
+                    st.success(f"✅ Cash Report: Capital Total Real al {fecha_capital_val.strftime('%d/%m/%Y')} = **${formato_es(capital_total_val)}**")
+                    st.caption(
+                        f"Efectivo (Ending Cash) + Valor de Posiciones Abiertas. "
+                        f"Esto REEMPLAZA tu Capital Base — ya no hace falta escribirlo a mano."
+                    )
+
                 st.warning(
                     "⚠️ Revisa la vista previa antes de confirmar. "
                     "Esta acción escribe directamente en Google Sheets y no se puede deshacer automáticamente."
@@ -1029,11 +1070,26 @@ with tab_bitacora:
                                 if filas_otros_usuarios:
                                     sheet_posiciones.append_rows(filas_otros_usuarios)
                             sheet_posiciones.append_rows(filas_posiciones_final)
+                        if capital_calculado_ibkr is not None:
+                            # Reemplazar Capital Base en config con el calculado desde IBKR
+                            capital_total_val, fecha_capital_val = capital_calculado_ibkr
+                            filas_config_actual = sheet_config.get_all_values()
+                            fila_encontrada_cfg = None
+                            for idx, fila in enumerate(filas_config_actual[1:], start=2):
+                                if fila and fila[0] == usuario_actual:
+                                    fila_encontrada_cfg = idx
+                                    break
+                            valores_cfg = [usuario_actual, capital_total_val, str(fecha_capital_val)]
+                            if fila_encontrada_cfg:
+                                sheet_config.update(f"A{fila_encontrada_cfg}:C{fila_encontrada_cfg}", [valores_cfg])
+                            else:
+                                sheet_config.append_row(valores_cfg)
                         st.success(
                             f"🎉 ¡Importación exitosa! Se guardaron **{len(filas_finales)} trades**, "
-                            f"**{len(filas_cash_final)} movimientos de capital** y se actualizó el snapshot de "
-                            f"**{len(filas_posiciones_final)} posiciones abiertas**. "
-                            f"Haz clic en **Actualizar Bóveda** para verlos reflejados en las métricas."
+                            f"**{len(filas_cash_final)} movimientos de capital**, se actualizó el snapshot de "
+                            f"**{len(filas_posiciones_final)} posiciones abiertas**"
+                            + (f" y se actualizó tu Capital Base a **${formato_es(capital_calculado_ibkr[0])}**" if capital_calculado_ibkr else "")
+                            + f". Haz clic en **Actualizar Bóveda** para verlos reflejados en las métricas."
                         )
                     except Exception as e:
                         st.error(f"Error al escribir en Google Sheets: {e}")
@@ -1067,34 +1123,54 @@ with tab_dash:
                 fechas_max   = df_cerradas['Fecha_DT'].max().date()
                 rango_fechas = st.date_input("Rango de Fechas:", [fechas_min, fechas_max], format="DD/MM/YYYY")
 
-            # --- CAPITAL INICIAL: automático desde Capital Base + P/L + movimientos previos ---
+            # --- Proyección de capital hacia CUALQUIER fecha, adelante o atrás,
+            # desde el Capital Base guardado (que ahora normalmente es "hoy",
+            # calculado desde el Cash Report de IBKR, no una fecha fija del pasado).
+            def capital_en_fecha(fecha_objetivo_dt):
+                if capital_base_guardado is None or fecha_base_guardada is None:
+                    return None
+                fecha_base_dt = pd.to_datetime(fecha_base_guardada)
+                if fecha_objetivo_dt == fecha_base_dt:
+                    return capital_base_guardado
+                elif fecha_objetivo_dt < fecha_base_dt:
+                    # Retroceder en el tiempo: restar lo que pasó entre la fecha
+                    # objetivo y la fecha base para "deshacerlo".
+                    pl_medio = df_cerradas[
+                        (df_cerradas['Fecha_DT'] >= fecha_objetivo_dt) &
+                        (df_cerradas['Fecha_DT'] < fecha_base_dt)
+                    ]['P/L $'].sum()
+                    mov_medio = 0.0
+                    if not df_movimientos.empty:
+                        mov_medio = df_movimientos[
+                            (df_movimientos['Fecha_DT'] >= fecha_objetivo_dt) &
+                            (df_movimientos['Fecha_DT'] < fecha_base_dt)
+                        ]['Monto'].sum()
+                    return capital_base_guardado - pl_medio - mov_medio
+                else:
+                    # Avanzar en el tiempo: sumar lo que pasó entre la fecha base
+                    # y la fecha objetivo.
+                    pl_medio = df_cerradas[
+                        (df_cerradas['Fecha_DT'] >= fecha_base_dt) &
+                        (df_cerradas['Fecha_DT'] < fecha_objetivo_dt)
+                    ]['P/L $'].sum()
+                    mov_medio = 0.0
+                    if not df_movimientos.empty:
+                        mov_medio = df_movimientos[
+                            (df_movimientos['Fecha_DT'] >= fecha_base_dt) &
+                            (df_movimientos['Fecha_DT'] < fecha_objetivo_dt)
+                        ]['Monto'].sum()
+                    return capital_base_guardado + pl_medio + mov_medio
+
+            # --- CAPITAL INICIAL: proyectado desde el Capital Base (IBKR o manual) ---
             with f_col1:
                 if capital_base_guardado is not None and fecha_base_guardada is not None:
                     fecha_inicio_rango = rango_fechas[0] if len(rango_fechas) == 2 else fechas_min
-                    fecha_base_dt   = pd.to_datetime(fecha_base_guardada)
-                    fecha_inicio_dt = pd.to_datetime(fecha_inicio_rango)
-
-                    if fecha_inicio_dt <= fecha_base_dt:
-                        capital_inicial = capital_base_guardado
-                    else:
-                        pl_previo = df_cerradas[
-                            (df_cerradas['Fecha_DT'] >= fecha_base_dt) &
-                            (df_cerradas['Fecha_DT'] < fecha_inicio_dt)
-                        ]['P/L $'].sum()
-
-                        mov_previo = 0.0
-                        if not df_movimientos.empty:
-                            mov_previo = df_movimientos[
-                                (df_movimientos['Fecha_DT'] >= fecha_base_dt) &
-                                (df_movimientos['Fecha_DT'] < fecha_inicio_dt)
-                            ]['Monto'].sum()
-
-                        capital_inicial = capital_base_guardado + pl_previo + mov_previo
+                    capital_inicial = capital_en_fecha(pd.to_datetime(fecha_inicio_rango))
 
                     st.metric("Capital Inicial ($)", f"${formato_es(capital_inicial)}")
                     st.caption(
-                        f"⚙️ Auto: base ${formato_es(capital_base_guardado)} el "
-                        f"{fecha_base_guardada.strftime('%d/%m/%Y')} + P/L y movimientos acumulados."
+                        f"⚙️ Proyectado desde ${formato_es(capital_base_guardado)} "
+                        f"({fecha_base_guardada.strftime('%d/%m/%Y')})."
                     )
                 else:
                     capital_inicial = None
@@ -1155,27 +1231,12 @@ with tab_dash:
                 df_anual        = df_filtrado[df_filtrado['Fecha_DT'].dt.year == año_actual]
                 pl_neto_anual   = df_anual['P/L $'].sum()
 
-                # Capital al INICIO DEL AÑO ACTUAL (no el inicio del rango que esté
-                # viendo en pantalla) — si el rango cubre más de un año, dividir por
-                # el capital del rango completo da una rentabilidad anual incorrecta.
-                if capital_base_guardado is not None and fecha_base_guardada is not None:
-                    fecha_inicio_anio_dt = pd.Timestamp(year=año_actual, month=1, day=1)
-                    fecha_base_dt2 = pd.to_datetime(fecha_base_guardada)
-                    if fecha_inicio_anio_dt <= fecha_base_dt2:
-                        capital_inicio_anio = capital_base_guardado
-                    else:
-                        pl_previo_anio = df_cerradas[
-                            (df_cerradas['Fecha_DT'] >= fecha_base_dt2) &
-                            (df_cerradas['Fecha_DT'] < fecha_inicio_anio_dt)
-                        ]['P/L $'].sum()
-                        mov_previo_anio = 0.0
-                        if not df_movimientos.empty:
-                            mov_previo_anio = df_movimientos[
-                                (df_movimientos['Fecha_DT'] >= fecha_base_dt2) &
-                                (df_movimientos['Fecha_DT'] < fecha_inicio_anio_dt)
-                            ]['Monto'].sum()
-                        capital_inicio_anio = capital_base_guardado + pl_previo_anio + mov_previo_anio
-                else:
+                # Capital al INICIO DEL AÑO ACTUAL (1-enero), no el inicio del rango
+                # que esté viendo en pantalla — funciona hacia adelante o hacia atrás
+                # según dónde caiga la fecha base respecto al 1-enero.
+                fecha_inicio_anio_dt = pd.Timestamp(year=año_actual, month=1, day=1)
+                capital_inicio_anio  = capital_en_fecha(fecha_inicio_anio_dt)
+                if capital_inicio_anio is None:
                     capital_inicio_anio = capital_inicial
 
                 rentabilidad_anual = (pl_neto_anual / capital_inicio_anio) * 100 if capital_inicio_anio else 0.0
